@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+testmedia/
+deploy/
+dbg.py
+launcher/*.o
+launcher/*.exe
