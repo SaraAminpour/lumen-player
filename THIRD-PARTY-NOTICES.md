@@ -10,6 +10,8 @@ The Windows release bundles the following components, each under its own license
 | [python-mpv](https://github.com/jaseg/python-mpv) 1.0.8 | Python bindings for libmpv | GPL-2.0-or-later / LGPL-2.1-or-later |
 | [CPython](https://www.python.org) 3.13 (embeddable package) | Runtime | PSF License (see `app/LICENSE.txt` in the bundle) |
 | [Inter](https://rsms.me/inter/) typeface by Rasmus Andersson | UI font | SIL Open Font License 1.1 (`app/lumen/assets/Inter-LICENSE.txt`) |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Opening YouTube and other web video links | Unlicense |
+| [QuickJS-ng](https://github.com/quickjs-ng/quickjs) | JavaScript runtime yt-dlp uses for YouTube | MIT |
 | [Material Design Icons](https://pictogrammers.com/library/mdi/) by Pictogrammers | Icon paths in `qml/Icons.js` | Apache-2.0 |
 
 The source code of each component is available from the linked project pages.

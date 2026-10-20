@@ -2,7 +2,7 @@
 ; It unpacks the portable bundle to a temp folder and hands over to Lumen's own animated
 ; installer ("Install Lumen.exe"), which does the per-user install. No admin rights needed.
 ; Build: makensis -DVERSION=1.0.0 -DSTAGE=build/stage/Lumen -DOUT=build/Lumen-Setup-1.0.0.exe packaging/lumen-setup.nsi
-; Silent: Lumen-Setup.exe /S
+; Silent: Lumen-Setup.exe /S   (Lumen's updater adds --update --relaunch "<video>")
 
 Unicode true
 ManifestDPIAware true
@@ -39,10 +39,11 @@ Section
   File /r "${STAGE}/*"
   SetOutPath "$TEMP"            ; leave the temp folder so NSIS can delete it afterwards
   HideWindow
+  ${GetParameters} $R0           ; pass through e.g. Lumen's own --update --relaunch "<video>"
   ${If} ${Silent}
-    ExecWait '"$PLUGINSDIR\Lumen\Install Lumen.exe" --auto' $0
+    ExecWait '"$PLUGINSDIR\Lumen\Install Lumen.exe" --auto $R0' $0
   ${Else}
-    ExecWait '"$PLUGINSDIR\Lumen\Install Lumen.exe"' $0
+    ExecWait '"$PLUGINSDIR\Lumen\Install Lumen.exe" $R0' $0
   ${EndIf}
   SetErrorLevel $0
 SectionEnd

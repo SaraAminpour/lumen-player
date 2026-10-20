@@ -40,6 +40,8 @@ ApplicationWindow {
         property bool resume: true
         property bool autoPlaylist: true
         property bool pauseOnMinimize: false
+        property bool autoUpdate: true
+        property int streamQuality: 1080
         property bool rememberVolume: true
         property real volume: 100
         property bool volumeBoost: false
@@ -79,6 +81,7 @@ ApplicationWindow {
             player.setProp("resume-playback", prefs.resume)
         }
         applySubStyle()
+        player.configure_streaming(prefs.streamQuality)
         bridge.styleWindow(win, false)
         for (var i = 0; i < testActions.length; i++) runTest(testActions[i])
     }
@@ -165,7 +168,8 @@ ApplicationWindow {
         if (player.idle || !player.path || player.duration <= 0) return
         var p = player.path, r = recent.filter(function (e) { return e.path !== p })
         var nearEnd = player.duration - player.position < 30
-        r.unshift({ path: p, pos: nearEnd ? 0 : player.position, dur: player.duration, t: Date.now() })
+        r.unshift({ path: p, pos: nearEnd ? 0 : player.position, dur: player.duration, t: Date.now(),
+                    title: p.indexOf("://") > 0 ? player.mediaTitle : "" })
         recent = r.slice(0, 12)
         prefs.recentJson = JSON.stringify(recent)
     }
@@ -309,6 +313,7 @@ ApplicationWindow {
         else if (a === "fsback") fsBackTimer.start()
         else if (a === "fslater") fsLaterTimer.start()
         else if (a === "max") toggleMaximize()
+        else if (a === "update") { updateTest = true; updater.check(false) }
     }
     // headless test capture: --test-shot=file.png@delay_ms
     Timer {
@@ -340,6 +345,19 @@ ApplicationWindow {
                                     : toast.show("Audio: " + trackLabel("audio", player.aid), Icons.musicNote)
     }
     Timer { interval: 5000; repeat: true; running: !player.idle && !player.paused; onTriggered: rememberPosition() }
+    // updates: a quiet check shortly after start (at most every 20 h), then Install on request
+    Timer { interval: 8000; running: testShot === "" && prefs.autoUpdate && updater.supported; onTriggered: updater.check(true) }
+    property bool updateTest: false       // --act=update: press Install as soon as an update is found
+    Connections {
+        target: updater
+        function onChanged() { if (win.updateTest && updater.state === "available") updater.install() }
+        function onReadyToInstall() {
+            win.rememberPosition()
+            player.saveState()
+            if (!player.idle && !player.paused) player.setProp("pause", true)
+            updater.launchSetup(player.idle ? "" : player.path)
+        }
+    }
 
     Connections {
         target: bridge
@@ -687,6 +705,38 @@ ApplicationWindow {
         }
 
         UrlDialog { id: urlDialog }
+        UpdateCard {
+            id: updateCard
+            anchors.top: parent.top; anchors.topMargin: 64
+            anchors.right: parent.right; anchors.rightMargin: win.panel !== "" ? sidePanel.width + 24 : 16
+            z: 45
+            dismissed: win.panel === "settings"   // the Settings page shows the same controls
+            allowed: win.uiVisible || player.idle
+        }
+        Rectangle {   // in-app update: the setup closes this window and reopens Lumen
+            anchors.fill: parent
+            z: 100
+            visible: opacity > 0
+            opacity: updater.state === "ready" || updater.state === "installing" ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 300 } }
+            color: Qt.rgba(0.03, 0.035, 0.05, 0.86)
+            MouseArea { anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.AllButtons }
+            Column {
+                anchors.centerIn: parent
+                spacing: 16
+                Spinner { anchors.horizontalCenter: parent.horizontalCenter; running: parent.visible }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Installing Lumen " + updater.latest
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.Bold
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Lumen will close and reopen by itself" + (player.idle ? "." : ", right where you were.")
+                    color: Theme.textDim; font.family: Theme.font; font.pixelSize: 14
+                }
+            }
+        }
         ShortcutsSheet { id: shortcutsSheet }
         ContextMenu { id: ctxMenu }
 
@@ -774,6 +824,14 @@ ApplicationWindow {
     Key { sequences: ["Ctrl+O"]; autoRepeat: false; onActivated: { openDialog.appendMode = false; openDialog.open() } }
     Key { sequences: ["Ctrl+Shift+O"]; autoRepeat: false; onActivated: { folderDialog.appendMode = false; folderDialog.open() } }
     Key { sequences: ["Ctrl+U"]; autoRepeat: false; onActivated: urlDialog.open = true }
+    Key {   // paste a link (YouTube, a stream, …) straight into the player
+        sequences: ["Ctrl+V"]; autoRepeat: false; enabled: !urlDialog.open
+        onActivated: {
+            var c = bridge.clipboardText().trim()
+            if (/^(https?|rtmp|rtsp|udp|mms|ftp):\/\//i.test(c)) { toast.show("Opening link…", Icons.web); win.openTargets([c], false) }
+            else urlDialog.open = true
+        }
+    }
     Key { sequences: ["Ctrl+Shift+S"]; autoRepeat: false; onActivated: subDialog.open() }
     Key { sequences: ["Ctrl+1"]; autoRepeat: false; onActivated: win.togglePanel("subs") }
     Key { sequences: ["Ctrl+2"]; autoRepeat: false; onActivated: win.togglePanel("audio") }

@@ -49,6 +49,10 @@ with one-tap nudges, a "snap to line" button, and a sync assistant that works ou
   *Continue watching* list on the home screen.
 - **Binge-friendly:** opening an episode queues the rest of the folder, in natural order.
 - **Seek-bar previews:** hover over the timeline to see a thumbnail of that moment.
+- **YouTube and web links:** paste a YouTube, Vimeo, Twitch or direct stream link (<kbd>Ctrl</kbd>+<kbd>V</kbd>
+  or <kbd>Ctrl</kbd>+<kbd>U</kbd>) and it plays like a local file, at the quality you choose (720p to 4K).
+- **Updates itself:** Lumen checks GitHub for a new version once a day. Press **Install now** and it downloads,
+  verifies and installs the update quietly, then reopens on the video you were watching.
 - **Clean full screen:** controls hide after 3 seconds without mouse movement. A double-click toggles
   full screen instantly.
 - **Click to clear the view:** a single click hides or shows the controls without touching playback, so a
@@ -84,7 +88,7 @@ with one-tap nudges, a "snap to line" button, and a sync assistant that works ou
 | **Subtitles** | Track picker, external `.srt` `.ass` `.ssa` `.vtt` `.sub` `.sup` `.idx` files (drag and drop works), ±50 ms to ±1 s nudges, snap to previous/next line, sync assistant, second subtitle, size, position, colour, background box, override for styled (ASS) subtitles |
 | **Audio** | Track picker, external audio files, audio delay, volume boost up to 200%, loudness normalization, stereo downmix for 5.1/7.1, output device selection |
 | **Picture** | Aspect ratio presets, crop to fill, zoom, rotate, mirror, brightness, contrast, saturation, gamma, sharpening, debanding, deinterlacing, hardware/software decoding |
-| **Library** | Continue watching, auto-queued folder playback, playlist panel, open files, folders or URLs (direct media links) |
+| **Library** | Continue watching, auto-queued folder playback, playlist panel, open files, folders or links (YouTube, Vimeo, Twitch, HLS/DASH and direct media links via yt-dlp) |
 | **Tools** | Screenshots with or without subtitles, media info (codecs, bitrate, resolution, colour, dropped frames), always on top |
 | **Look** | Several accent colours, frosted-glass panels (can be turned off on slow PCs), animated home screen |
 
@@ -105,8 +109,10 @@ The installer puts Lumen in `%LOCALAPPDATA%\Programs\Lumen` and adds:
 - a **Lumen Player** entry in Explorer's *Open with* menu for common video and audio formats
 - an entry in *Settings → Apps → Installed apps*, so Lumen can be uninstalled like any other app
 
-To update, run the newer installer. It replaces the old version in place and closes Lumen first if it is
-open. Your settings and watch history are kept.
+**Updates are built in.** From version 1.2, Lumen checks this repository for a new release once a day (or
+on demand in *Settings → Updates*). When one is out, a card offers **Install now**: Lumen downloads the
+installer, checks its SHA-256 against the digest GitHub publishes, installs it quietly, and reopens where you
+left off. Your settings and watch history are kept. Running a newer installer by hand works too.
 
 > **Windows SmartScreen.** The installer is not code-signed yet, so Windows may show *"Windows protected
 > your PC"* the first time. Click **More info** → **Run anyway**.

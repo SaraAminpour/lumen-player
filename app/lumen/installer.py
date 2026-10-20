@@ -117,8 +117,10 @@ class Installer(QObject):
     changed = Signal()
     _step = Signal(float, str, str)     # progress, state, message (emitted from the copy thread)
 
-    def __init__(self, media_exts, version, auto=False):
+    def __init__(self, media_exts, version, auto=False, relaunch=None, updating=False):
         super().__init__()
+        self._relaunch = relaunch      # args to reopen Lumen with once installed (in-app updates)
+        self._updating = updating
         self._exts = sorted(media_exts)
         self._version = version
         self._auto = auto
@@ -133,12 +135,17 @@ class Installer(QObject):
             print(f"installer: {state} {p:.2f} {msg}", flush=True)
         self._progress, self._state, self._message = p, state, msg
         self.changed.emit()
+        if state == "done" and self._relaunch is not None:
+            exe = os.path.join(self.dest, "Lumen.exe")
+            if IS_WIN and os.path.exists(exe):
+                subprocess.Popen([exe] + self._relaunch, cwd=self.dest, close_fds=True)
 
     progress = Property(float, lambda s: s._progress, notify=changed)
     state = Property(str, lambda s: s._state, notify=changed)
     message = Property(str, lambda s: s._message, notify=changed)
     target = Property(str, lambda s: s.dest, constant=True)
     auto = Property(bool, lambda s: s._auto, constant=True)
+    updating = Property(bool, lambda s: s._updating, constant=True)
 
     @Slot()
     def start(self):
@@ -181,7 +188,7 @@ class Installer(QObject):
                 os.rename(staging, self.dest)
                 shutil.rmtree(old, ignore_errors=True)
             exe = os.path.join(self.dest, "Lumen.exe")
-            if IS_WIN:
+            if IS_WIN and not os.environ.get("LUMEN_TEST"):   # tests install to a scratch folder only
                 self._step.emit(0.93, "working", "Adding shortcuts…")
                 _make_shortcuts(exe)
                 self._step.emit(0.97, "working", "Adding Lumen to “Open with”…")
@@ -209,7 +216,10 @@ def run_installer(media_exts, version, ui_font_path, style_window):
     fam = QFontDatabase.applicationFontFamilies(fid) if fid >= 0 else []
     family = fam[0] if fam else "Segoe UI"
     app.setFont(QFont(family, 10))
-    inst = Installer(media_exts, version, auto="--auto" in sys.argv)
+    relaunch = None
+    if "--relaunch" in sys.argv:   # Lumen's own updater: reopen the video that was playing
+        relaunch = [a for a in sys.argv[sys.argv.index("--relaunch") + 1:] if not a.startswith(("--", "/"))][:1]
+    inst = Installer(media_exts, version, auto="--auto" in sys.argv, relaunch=relaunch, updating="--update" in sys.argv)
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
     ctx.setContextProperty("installer", inst)

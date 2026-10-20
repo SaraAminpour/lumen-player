@@ -7,3 +7,4 @@ deploy/
 dbg.py
 launcher/*.o
 launcher/*.exe
+app/tools/

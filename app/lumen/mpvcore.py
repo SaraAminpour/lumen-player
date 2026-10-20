@@ -12,6 +12,25 @@ from PySide6.QtQuick import QQuickFramebufferObject, QQuickImageProvider, QQuick
 
 import mpv
 
+import shutil
+import sys
+
+# yt-dlp (+ the QuickJS runtime it uses for YouTube) ships in app\tools on Windows; elsewhere use PATH.
+TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+_EXE = ".exe" if sys.platform == "win32" else ""
+YTDLP = next((p for p in (os.path.join(TOOLS, "yt-dlp" + _EXE), shutil.which("yt-dlp")) if p and os.path.exists(p)), "")
+QJS = next((p for p in (os.path.join(TOOLS, "qjs" + _EXE), shutil.which("qjs")) if p and os.path.exists(p)), "")
+
+
+def _ytdl_options():
+    """mpv's ytdl hook reads these when it loads, so they go in at creation time."""
+    if not YTDLP:
+        return {"ytdl": "no"}
+    o = {"ytdl": "yes", "script_opts": "ytdl_hook-ytdl_path=" + YTDLP}
+    if QJS:
+        o["ytdl_raw_options"] = "js-runtimes=quickjs:" + QJS
+    return o
+
 # ---------------------------------------------------------------- player ---
 
 # (mpv property, qml name, qt type, default)
@@ -150,7 +169,9 @@ class Player(QObject):
                                "video-pan-x,video-pan-y,video-rotate,secondary-sid",
             log_handler=self._on_log,
             loglevel="warn",
+            **_ytdl_options(),
         )
+        self.configure_streaming(1080)
         self._propArrived.connect(self._apply_prop, Qt.QueuedConnection)
         self._eventArrived.connect(self._apply_event, Qt.QueuedConnection)
         for prop, qname, _, _ in OBSERVED:
@@ -159,6 +180,17 @@ class Player(QObject):
             except Exception:
                 pass
         self.mpv.register_event_callback(self._on_event)
+
+    @Slot(int)
+    def configure_streaming(self, max_height):
+        """Web pages (YouTube, Vimeo, Twitch, …) are resolved by yt-dlp through mpv's ytdl hook."""
+        try:
+            cap = f"[height<=?{max_height}]" if max_height > 0 else ""
+            self.mpv["ytdl-format"] = f"bestvideo{cap}+bestaudio/best{cap}/best"
+        except Exception as e:
+            print("streaming setup:", e, flush=True)
+
+    streamingAvailable = Property(bool, lambda s: bool(YTDLP), constant=True)
 
     # mpv thread -> Qt thread
     def _make_observer(self, prop):

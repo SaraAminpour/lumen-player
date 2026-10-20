@@ -27,6 +27,12 @@ PY="${PYTHON:-$ROOT/.venv/bin/python}"; [ -x "$PY" ] || PY=python3
 "$PY" -m compileall -q lumen >/dev/null || true
 cp "$ROOT/launcher/Lumen.exe" ../Lumen.exe
 cp "$ROOT/launcher/Lumen.exe" "../Install Lumen.exe"
+# web video: latest yt-dlp + QuickJS (the JS runtime yt-dlp needs for YouTube)
+mkdir -p "$ROOT/build/dl/tools" tools
+curl -fsSL -o "$ROOT/build/dl/tools/yt-dlp.exe" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+[ -f "$ROOT/build/dl/tools/qjs.exe" ] ||
+  curl -fsSL -o "$ROOT/build/dl/tools/qjs.exe" https://github.com/quickjs-ng/quickjs/releases/latest/download/qjs-windows-x86_64.exe
+cp "$ROOT/build/dl/tools/yt-dlp.exe" "$ROOT/build/dl/tools/qjs.exe" tools/
 cp "$ROOT/LICENSE" ../LICENSE.txt
 cp "$ROOT/THIRD-PARTY-NOTICES.md" ../THIRD-PARTY-NOTICES.md
 

@@ -206,7 +206,7 @@ Item {
                         spacing: 2
                         Text {
                             width: parent.width
-                            text: bridge.baseName(card.modelData.path)
+                            text: card.modelData.title || bridge.baseName(card.modelData.path)
                             elide: Text.ElideMiddle
                             color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
                         }

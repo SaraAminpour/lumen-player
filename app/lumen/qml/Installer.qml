@@ -11,7 +11,7 @@ Window {
     visible: true
     color: Theme.bg
     flags: Qt.Window | Qt.FramelessWindowHint
-    title: "Install Lumen Player"
+    title: installer.updating ? "Updating Lumen" : "Install Lumen Player"
 
     readonly property string st: installer.state
     Component.onCompleted: { Theme.font = uiFont; if (installer.auto) installer.start() }
@@ -102,7 +102,8 @@ Window {
             Text {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: win.st === "done" ? "Lumen is installed" : win.st === "error" ? "Something went wrong" : "Lumen Player"
+                text: win.st === "done" ? (installer.updating ? "Lumen is up to date" : "Lumen is installed")
+                    : win.st === "error" ? "Something went wrong" : installer.updating ? "Updating Lumen" : "Lumen Player"
                 font.family: Theme.font; font.pixelSize: 26; font.weight: Font.Bold
                 color: Theme.text
             }
@@ -189,7 +190,7 @@ Window {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideMiddle
-                text: win.st === "done" ? "Right-click any video → Open with → Lumen Player" : installer.target
+                text: win.st === "done" ? (installer.updating ? "Reopening Lumen…" : "Right-click any video → Open with → Lumen Player") : installer.target
                 font.family: Theme.font; font.pixelSize: 11
                 color: Theme.textFaint
             }

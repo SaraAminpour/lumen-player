@@ -25,13 +25,13 @@ Modal {
         Row {
             spacing: 10
             Icon { path: Icons.linkVariant; size: 22; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: "Open a stream or URL"; color: Theme.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.Bold }
+            Text { text: "Open a link"; color: Theme.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.Bold }
         }
         TextField {
             id: field
             width: parent.width
             height: 44
-            placeholderText: "https://…   (direct links, HLS/DASH, YouTube with yt-dlp installed)"
+            placeholderText: player.streamingAvailable ? "Paste a YouTube, Vimeo, Twitch or direct video link" : "https://…   (direct links, HLS/DASH streams)"
             placeholderTextColor: Theme.textFaint
             color: Theme.text
             font.family: Theme.font; font.pixelSize: 13

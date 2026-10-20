@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 IS_WIN = sys.platform == "win32"
 APP_ID = "SaraAminpour.Lumen.Player.1"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 if IS_WIN:
     os.environ["PATH"] = ROOT + os.pathsep + os.environ.get("PATH", "")
@@ -18,7 +18,8 @@ if IS_WIN:
     except Exception:
         pass
 
-TEST_MODE = any(a.startswith("--test-shot") for a in sys.argv)
+# --test-shot (or LUMEN_TEST in the environment, which survives an update relaunch) = isolated test profile
+TEST_MODE = any(a.startswith("--test-shot") for a in sys.argv) or bool(os.environ.get("LUMEN_TEST"))
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~/.config"),
                           "Lumen-test" if TEST_MODE else "Lumen")
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -345,7 +346,7 @@ def main():
     locale.setlocale(locale.LC_NUMERIC, "C")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     files = [os.path.abspath(a) if os.path.exists(a) else a for a in args]
-    if "--new-window" not in sys.argv and not any(a.startswith("--test") for a in sys.argv):
+    if "--new-window" not in sys.argv and not TEST_MODE:
         if forward_to_running_instance(files):
             return 0
     app.setWindowIcon(QIcon(os.path.join(HERE, "assets", "lumen.png")))
@@ -365,7 +366,8 @@ def main():
         player.mpv["save-position-on-quit"] = "no"
     mpvcore.VideoItem.default_player = player
     bridge = Bridge(app)
-    _server = start_instance_server(bridge)  # noqa: F841 (kept alive for the app's lifetime)
+    # test runs must not take over "open this file" hand-offs meant for the real Lumen
+    _server = None if TEST_MODE else start_instance_server(bridge)  # noqa: F841 (kept alive)
     provider = mpvcore.ThumbProvider()
     thumbs = mpvcore.Thumbnailer(provider)
 
@@ -379,6 +381,11 @@ def main():
     ctx.setContextProperty("isWindows", IS_WIN)
     ctx.setContextProperty("startupFiles", files)
     ctx.setContextProperty("logPath", LOG_PATH)
+    import updater
+    upd = updater.Updater(VERSION, app)
+    ctx.setContextProperty("updater", upd)
+    if not TEST_MODE and mpvcore.YTDLP.startswith(mpvcore.TOOLS):
+        updater.update_ytdlp(mpvcore.YTDLP, CONFIG_DIR)
     acts = [a.split("=", 1)[1] for a in sys.argv if a.startswith("--act=")]
     shot = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--test-shot=")), "")
     ctx.setContextProperty("testShot", shot)
