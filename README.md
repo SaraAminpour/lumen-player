@@ -50,7 +50,9 @@ with one-tap nudges, a "snap to line" button, and a sync assistant that works ou
 - **Binge-friendly:** opening an episode queues the rest of the folder, in natural order.
 - **Seek-bar previews:** hover over the timeline to see a thumbnail of that moment.
 - **Clean full screen:** controls hide after 3 seconds without mouse movement. A double-click toggles
-  full screen instantly, and a single click pauses.
+  full screen instantly.
+- **Click to clear the view:** a single click hides or shows the controls without touching playback, so a
+  paused frame can be seen edge to edge. Playing and pausing stay on <kbd>Space</kbd> and the play button.
 - **Native Windows integration:** "Open with" entry, Desktop and Start menu shortcuts, single-instance
   opening, dark title bar and rounded corners.
 - **Installs without admin rights** and uninstalls cleanly from *Settings → Apps*.
@@ -166,7 +168,7 @@ Press <kbd>?</kbd> or <kbd>F1</kbd> in the app to see them all. The most useful:
 | <kbd>B</kbd> | A-B loop | <kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd> | Move up / down | <kbd>I</kbd> | Media info |
 | <kbd>0</kbd>–<kbd>9</kbd> | Jump to 0–90 % | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> | Load subtitle file | <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>U</kbd> | Open file / URL |
 
-Right-click anywhere on the video for a menu with everything else.
+A single click on the video shows or hides the controls; right-click anywhere on the video for a menu with everything else.
 
 ## How it works
 

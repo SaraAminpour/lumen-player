@@ -9,7 +9,7 @@ Modal {
     readonly property var groups: [
         ["Playback", [["Space / K", "Play · pause"], ["← / →", "Seek 5 s"], ["Shift + ← / →", "Seek 1 s"], ["J / L", "Seek 10 s"], [", / .", "Frame back · forward"], ["[ / ]", "Speed − / +"], ["Backspace", "Normal speed"], ["0 – 9", "Jump to 0–90 %"], ["N / P", "Next · previous file"], ["PgUp / PgDn", "Chapters"], ["B", "A-B loop"], ["Ctrl + R", "Loop file"]]],
         ["Subtitles", [["Z / X", "Delay −/+ 100 ms"], ["Shift + Z / X", "Delay −/+ 1 s"], ["G / H", "Snap to prev · next line"], ["C", "Next subtitle track"], ["V", "Show · hide"], ["Ctrl + = / −", "Bigger · smaller"], ["R / Shift + R", "Move up · down"], ["Ctrl + Shift + S", "Load subtitle file"]]],
-        ["Audio & window", [["↑ / ↓  ·  wheel", "Volume"], ["M", "Mute"], ["− / =", "Audio delay −/+ 100 ms"], ["A", "Next audio track"], ["F · double-click", "Full screen"], ["T", "Always on top"], ["S", "Screenshot"], ["I", "Media info"], ["Ctrl + O / U", "Open file · URL"], ["Ctrl + 1 – 5", "Panels"], ["? / F1", "This sheet"], ["Esc", "Close · exit full screen"]]]
+        ["Audio & window", [["↑ / ↓  ·  wheel", "Volume"], ["M", "Mute"], ["− / =", "Audio delay −/+ 100 ms"], ["A", "Next audio track"], ["F · double-click", "Full screen"], ["Click video", "Show · hide controls"], ["T", "Always on top"], ["S", "Screenshot"], ["I", "Media info"], ["Ctrl + O / U", "Open file · URL"], ["Ctrl + 1 – 5", "Panels"], ["? / F1", "This sheet"], ["Esc", "Close · exit full screen"]]]
     ]
     Item {
         anchors.fill: parent

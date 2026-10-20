@@ -27,7 +27,7 @@ ApplicationWindow {
     property var recent: []
     readonly property bool hasVideo: !!(player.videoParams && player.videoParams.w)
     readonly property bool uiVisible: player.idle || active
-                                      || panel !== "" || ctxMenu.visible || player.paused || loading
+                                      || panel !== "" || ctxMenu.visible || (player.paused && !barHidden) || loading
                                       || urlDialog.open || shortcutsSheet.open || dock.speedOpen
 
     // ------------------------------------------------------------ prefs
@@ -103,6 +103,18 @@ ApplicationWindow {
 
     // ------------------------------------------------------------ actions
     function poke() { active = true; activity.restart() }
+    // A single click on the video hides or shows the controls (playback is left alone), so a paused
+    // frame can be seen in full. Moving the mouse brings them back for 3 s; pausing shows them again.
+    property bool barHidden: false
+    function hideBar() { barHidden = true; active = false; activity.stop() }
+    function showBar() { barHidden = false; poke() }
+    function toggleBar() {
+        if (panel !== "") { panel = ""; return false }
+        if (uiVisible) { hideBar(); return false }
+        showBar()
+        return true
+    }
+    Connections { target: player; function onPausedChanged() { win.barHidden = false } }
 
     property var deferredOpen: null
     function openTargets(list, append) {
@@ -399,7 +411,8 @@ ApplicationWindow {
             property point last: Qt.point(-1, -1)
             onPointChanged: {
                 var p = point.scenePosition
-                if (Math.abs(p.x - last.x) + Math.abs(p.y - last.y) > 2) { if (win.tracing) win.trace("hover", last, p); last = p; win.poke() }
+                // after a click hid the bar, ignore hand jitter so the paused frame stays clear
+                if (Math.abs(p.x - last.x) + Math.abs(p.y - last.y) > (win.barHidden ? 10 : 2)) { if (win.tracing) win.trace("hover", last, p); last = p; win.poke() }
             }
         }
 
@@ -444,8 +457,9 @@ ApplicationWindow {
         Item {
             id: surface
             anchors.fill: parent
-            // A single click pauses after a short wait; a double click (judged with the system
-            // double-click speed) goes fullscreen on the second press and never leaves it paused.
+            // A single click shows or hides the controls after a short wait; a double click (judged with
+            // the system double-click speed) goes fullscreen on the second press instead. Clicks never
+            // pause: that is Space or the play button.
             MouseArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -453,27 +467,27 @@ ApplicationWindow {
                 property real lastPress: 0
                 property bool dragged: false
                 property bool second: false
-                property bool pausedByFirst: false
+                property int firstToggle: 0      // 1 = the first click showed the bar, -1 = hid it
                 function isSecond(x, y) {
                     return Date.now() - lastPress <= Math.max(300, Qt.styleHints.mouseDoubleClickInterval)
                            && Math.abs(x - pressAt.x) + Math.abs(y - pressAt.y) < 24
                 }
                 function goFullscreen() {
                     if (clickWait.running) clickWait.stop()
-                    else if (pausedByFirst) win.togglePause()      // slow double click: undo the pause
-                    pausedByFirst = false
+                    else if (firstToggle > 0) win.hideBar()        // slow double click: undo the first click
+                    else if (firstToggle < 0) win.showBar()
+                    firstToggle = 0
                     lastPress = 0
                     win.toggleFullscreen()
                 }
                 onPressed: (m) => {
-                    win.poke()
-                    if (m.button === Qt.RightButton) { ctxMenu.popupAt(m.x, m.y); return }
+                    if (m.button === Qt.RightButton) { win.poke(); ctxMenu.popupAt(m.x, m.y); return }
                     dragged = false
                     second = lastPress > 0 && isSecond(m.x, m.y)
                     if (second) { goFullscreen(); return }
                     pressAt = Qt.point(m.x, m.y)
                     lastPress = Date.now()
-                    pausedByFirst = false
+                    firstToggle = 0
                 }
                 // some platforms report the second press only as a double-click event
                 onDoubleClicked: (m) => { if (!second && m.button === Qt.LeftButton) { second = true; goFullscreen() } }
@@ -492,7 +506,7 @@ ApplicationWindow {
                 Timer {
                     id: clickWait
                     interval: 220
-                    onTriggered: { parent.pausedByFirst = true; win.togglePause() }
+                    onTriggered: parent.firstToggle = win.toggleBar() ? 1 : -1
                 }
             }
             WheelHandler {

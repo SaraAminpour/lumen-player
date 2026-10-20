@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 IS_WIN = sys.platform == "win32"
 APP_ID = "SaraAminpour.Lumen.Player.1"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 if IS_WIN:
     os.environ["PATH"] = ROOT + os.pathsep + os.environ.get("PATH", "")
