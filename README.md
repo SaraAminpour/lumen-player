@@ -5,19 +5,19 @@
 <h1 align="center">Lumen Player</h1>
 
 <p align="center">
-  <b>A modern, animated video player for Windows, built on mpv.</b><br>
+  <b>A modern, animated video player for Windows and Android, built on mpv.</b><br>
   Plays almost any file, looks good doing it, and makes out-of-sync subtitles easy to fix.
 </p>
 
 <p align="center">
   <a href="https://github.com/SaraAminpour/lumen-player/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SaraAminpour/lumen-player?color=7c5cff&label=release"></a>
-  <img alt="Platform: Windows 10/11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-2aa8ff">
+  <img alt="Platforms: Windows 10/11 and Android 8+" src="https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Android%208%2B-2aa8ff">
   <img alt="Engine: mpv" src="https://img.shields.io/badge/engine-libmpv-6b46c1">
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-22c55e"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/SaraAminpour/lumen-player/releases/latest"><b>⬇ Download for Windows</b></a>
+  <a href="https://github.com/SaraAminpour/lumen-player/releases/latest"><b>⬇ Download for Windows or Android</b></a>
   &nbsp;·&nbsp; <a href="#installation">Installation</a>
   &nbsp;·&nbsp; <a href="#fixing-subtitle-timing">Subtitle sync</a>
   &nbsp;·&nbsp; <a href="#keyboard-shortcuts">Shortcuts</a>
@@ -135,9 +135,32 @@ Windows only lets you choose the default app yourself: right-click a video → *
 *Settings → Apps → Installed apps → Lumen Player → Uninstall.* Shortcuts, the *Open with* entry and the
 program folder are removed. Silent uninstall: `"%LOCALAPPDATA%\Programs\Lumen\Lumen.exe" --uninstall --quiet`
 
+### Android
+
+Download **`Lumen-Android-<version>.apk`** from the [latest release](https://github.com/SaraAminpour/lumen-player/releases/latest)
+on your phone or tablet and open it. Android asks once to allow installing apps from your browser or file
+manager; allow it, then tap **Install**.
+
+Lumen for Android has the same engine (mpv 0.41 with FFmpeg 8) and the same tools as the Windows app:
+subtitle timing (nudges, snap to line, sync assistant), second subtitle, subtitle style, audio and video
+adjustments, playlist, media info, screenshots, speed, A-B loop, Continue watching and per-file resume.
+On top of that it has touch gestures (tap to show or hide the controls, double-tap the sides to skip 10 s,
+swipe for brightness, volume and seeking, pinch to zoom), picture-in-picture, a screen lock, automatic
+rotation and a folder view of the videos on your phone. Share a YouTube video to Lumen, or use
+**Open link**, to play it with your chosen quality. **Settings → Updates** checks this repository and
+downloads new versions; Android then asks you to confirm the install.
+
+<table>
+  <tr>
+    <td width="28%"><img src="docs/screenshots/android-home.jpg" alt="Lumen for Android home screen"></td>
+    <td width="72%"><img src="docs/screenshots/android-player.jpg" alt="Lumen for Android player"><br><br>
+    <img src="docs/screenshots/android-subtitles.jpg" alt="Lumen for Android subtitle panel"></td>
+  </tr>
+</table>
+
 ### Requirements
 
-- Windows 10 or 11, 64-bit
+- Windows 10 or 11, 64-bit, or Android 8.0 or newer
 - A GPU with OpenGL 3.3 (any Intel, AMD or NVIDIA GPU from the last decade)
 - About 260 MB of disk space
 
@@ -218,6 +241,17 @@ packaging/fetch-deps.sh   # embeddable Python 3.13, PySide6 6.12 wheels, python-
 Lumen actually loads (`packaging/keep-pyside6.txt`). Pass `--clean` to `build.sh` to rebuild the runtime
 from scratch.
 
+### Android
+
+The Android app lives in `android/` (Kotlin, Jetpack Compose, [libmpv-android](https://github.com/jarnedemeulemeester/libmpv-android)
+and [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor) for YouTube). With JDK 17 and the
+Android SDK (platform 36):
+
+```bash
+cd android
+./gradlew assembleRelease     # signed if ~/.config/lumen-android/keystore.properties exists
+```
+
 ### Running from source (development)
 
 Lumen also runs on Linux, which makes UI work quick:
@@ -238,6 +272,7 @@ app/lumen/
   qml/             the whole interface (Main.qml, panels, controls, Theme.qml)
   assets/          logo and Inter font
 launcher/          Lumen.exe source (C, mingw-w64)
+android/           Lumen for Android (Kotlin + Compose)
 packaging/         dependency download, bundle assembly, NSIS setup script
 docs/screenshots/  images used in this README
 ```

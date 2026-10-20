@@ -12,6 +12,9 @@ The Windows release bundles the following components, each under its own license
 | [Inter](https://rsms.me/inter/) typeface by Rasmus Andersson | UI font | SIL Open Font License 1.1 (`app/lumen/assets/Inter-LICENSE.txt`) |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Opening YouTube and other web video links | Unlicense |
 | [QuickJS-ng](https://github.com/quickjs-ng/quickjs) | JavaScript runtime yt-dlp uses for YouTube | MIT |
+| [libmpv-android](https://github.com/jarnedemeulemeester/libmpv-android) (Android) | mpv 0.41 + FFmpeg for Android | GPL-3.0 (mpv GPL build) |
+| [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor) (Android) | Resolving YouTube and other web video links | GPL-3.0 |
+| [Vazirmatn](https://github.com/rastikerdar/vazirmatn) and [Noto Sans](https://notofonts.github.io/) (Android) | Subtitle fonts | SIL Open Font License 1.1 |
 | [Material Design Icons](https://pictogrammers.com/library/mdi/) by Pictogrammers | Icon paths in `qml/Icons.js` | Apache-2.0 |
 
 The source code of each component is available from the linked project pages.
