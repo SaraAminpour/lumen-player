@@ -20,8 +20,8 @@ android {
         applicationId = "com.saraaminpour.lumen"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10200
-        versionName = "1.2.0"
+        versionCode = 10201
+        versionName = "1.2.1"
         // phones/tablets (ARM) + x86_64 for Chromebooks and emulators
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }

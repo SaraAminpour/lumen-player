@@ -12,6 +12,8 @@ Modal {
         field.text = /^(https?|rtmp|rtsp|udp|mms|ftp):\/\//i.test(c) ? c : ""
         field.forceActiveFocus()
         field.selectAll()
+    } else {
+        stage.forceActiveFocus()   // otherwise the hidden field keeps eating Space and the arrow keys
     }
     function go() {
         if (field.text.trim() === "") return

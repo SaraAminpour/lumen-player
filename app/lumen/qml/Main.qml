@@ -179,11 +179,13 @@ ApplicationWindow {
     }
 
     function togglePause() {
+        if (tracing) trace("toggle", player.paused)
         if (player.idle) return
         flash.flash(player.paused ? Icons.play : Icons.pause)
         player.cycle("pause")
     }
     function seekRel(s) {
+        if (tracing) trace("seek", s, player.position.toFixed(1))
         if (player.idle) return
         player.seekBy(s)
         if (s < 0) leftRipple.hit(s); else rightRipple.hit(s)
@@ -499,6 +501,7 @@ ApplicationWindow {
                     win.toggleFullscreen()
                 }
                 onPressed: (m) => {
+                    stage.forceActiveFocus()
                     if (m.button === Qt.RightButton) { win.poke(); ctxMenu.popupAt(m.x, m.y); return }
                     dragged = false
                     second = lastPress > 0 && isSecond(m.x, m.y)

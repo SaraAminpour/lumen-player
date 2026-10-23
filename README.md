@@ -199,6 +199,9 @@ Press <kbd>?</kbd> or <kbd>F1</kbd> in the app to see them all. The most useful:
 
 A single click on the video shows or hides the controls; right-click anywhere on the video for a menu with everything else.
 
+The same keys work on Android with a keyboard (tablets, Chromebooks, Bluetooth keyboards): <kbd>Space</kbd> plays and pauses,
+and <kbd>←</kbd> / <kbd>→</kbd> jump back and forward 5 seconds.
+
 ## How it works
 
 ```

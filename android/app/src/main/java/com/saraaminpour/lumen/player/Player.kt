@@ -294,7 +294,7 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
 
     fun togglePause() { if (!idle) set("pause", if (paused) "no" else "yes") }
     fun pause() { if (!idle && !paused) set("pause", "yes") }
-    fun seekBy(s: Double) { if (!idle) cmd("seek", s.toString(), "relative") }
+    fun seekBy(s: Double) { if (!idle) cmd("seek", s.toString(), "relative+exact") }
     fun seekTo(t: Double, fast: Boolean = false) {
         if (!idle) cmd("seek", t.toString(), if (fast) "absolute+keyframes" else "absolute")
     }

@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
+import android.view.KeyEvent
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.saraaminpour.lumen.data.HistoryEntry
@@ -13,6 +14,8 @@ import com.saraaminpour.lumen.player.QueueItem
 import com.saraaminpour.lumen.player.ShotHooks
 import com.saraaminpour.lumen.player.Track
 import com.saraaminpour.lumen.player.Chapter
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -77,7 +80,7 @@ class ScreenshotTest {
         idle(); save(a, "android-home", video = false)
     }
 
-    private fun player(panel: String?, name: String, qualifiers: Boolean = true) {
+    private fun player(panel: String?, name: String, qualifiers: Boolean = true, keys: ((PlayerActivity) -> Unit)? = null) {
         seed()
         ShotHooks.transparent = true
         PlayerActivity.pendingQueue = listOf(
@@ -105,12 +108,29 @@ class ScreenshotTest {
         ctl.start().resume().visible()   // first composition happens on attach, after the state is set
         idle(800)
         a.ui.panel = panel               // opened after the first frame, like a tap would
-        idle(); save(a, name, video = true)
+        if (keys != null) { keys(a); repeat(4) { idle(25) } } else idle()
+        save(a, name, video = true)
         ShotHooks.transparent = false
     }
 
     @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi") fun playerControls() = player(null, "android-player")
     @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi") fun playerSubtitles() = player("subs", "android-subtitles")
     @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi") fun playerVideo() = player("video", "android-video")
+    @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi") fun keyboardSeek() = player(null, "android-keys") { a ->
+        fun press(code: Int) = a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+        a.ui.controls = false
+        assertTrue(press(KeyEvent.KEYCODE_DPAD_RIGHT)); assertTrue(press(KeyEvent.KEYCODE_DPAD_RIGHT))
+        assertEquals(1, a.ui.rippleSide); assertEquals(10, a.ui.rippleAmount); assertEquals(5, a.ui.rippleStep)
+        assertTrue(press(KeyEvent.KEYCODE_DPAD_LEFT))
+        assertEquals(-1, a.ui.rippleSide); assertEquals(5, a.ui.rippleAmount)
+        val flashes = a.ui.flashSerial
+        assertTrue(press(KeyEvent.KEYCODE_SPACE))
+        assertEquals(flashes + 1, a.ui.flashSerial)
+        // a held Space key must not flicker between play and pause
+        assertTrue(a.dispatchKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SPACE, 3)))
+        assertEquals(flashes + 1, a.ui.flashSerial)
+        idle(300)
+        assertTrue(press(KeyEvent.KEYCODE_DPAD_RIGHT))
+    }
     @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi") fun playerSettings() = player("settings", "android-settings")
 }

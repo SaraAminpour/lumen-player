@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -157,16 +158,19 @@ class PlayerActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN || ui.typing) return super.dispatchKeyEvent(event)
         val shift = event.isShiftPressed
+        val first = event.repeatCount == 0
+        // ← → always seek on a real keyboard; a TV remote's D-pad moves between buttons while they're shown
+        val keyboard = event.device?.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+        val arrowsSeek = keyboard || !ui.controls
         val handled = when (event.keyCode) {
-            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_DPAD_CENTER -> {
-                if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && ui.controls) false else { player.togglePause(); true }
-            }
-            KeyEvent.KEYCODE_MEDIA_PLAY -> { if (player.paused) player.togglePause(); true }
-            KeyEvent.KEYCODE_MEDIA_PAUSE -> { player.pause(); true }
-            KeyEvent.KEYCODE_DPAD_LEFT -> { if (ui.controls) false else { player.seekBy(if (shift) -1.0 else -5.0); true } }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { if (ui.controls) false else { player.seekBy(if (shift) 1.0 else 5.0); true } }
-            KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_MEDIA_REWIND -> { player.seekBy(-10.0); true }
-            KeyEvent.KEYCODE_L, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { player.seekBy(10.0); true }
+            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (first) ui.togglePlay(player); true }
+            KeyEvent.KEYCODE_DPAD_CENTER -> { if (ui.controls) false else { if (first) ui.togglePlay(player); true } }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> { if (player.paused) ui.togglePlay(player); true }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> { if (!player.paused) ui.togglePlay(player); true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { if (arrowsSeek) { ui.seek(player, if (shift) -1.0 else -5.0); true } else false }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { if (arrowsSeek) { ui.seek(player, if (shift) 1.0 else 5.0); true } else false }
+            KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_MEDIA_REWIND -> { ui.seek(player, -10.0); true }
+            KeyEvent.KEYCODE_L, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { ui.seek(player, 10.0); true }
             KeyEvent.KEYCODE_Z -> { ui.nudgeSub(player, if (shift) -1.0 else -0.1); true }
             KeyEvent.KEYCODE_X -> { ui.nudgeSub(player, if (shift) 1.0 else 0.1); true }
             KeyEvent.KEYCODE_G -> { player.subStep(-1); ui.subToast(player); true }

@@ -57,6 +57,10 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.Forward5
+import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.BrightnessMedium
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -153,8 +157,34 @@ class PlayerUiState {
     var typing by mutableStateOf(false)
     var poke by mutableIntStateOf(0)
     val osd = OsdState()
+    // seek bubble at the screen edge and the play/pause flash, shared by touch and keyboard
+    var rippleSide by mutableIntStateOf(0)
+    var rippleAmount by mutableIntStateOf(0)
+    var rippleStep by mutableIntStateOf(10)
+    var rippleSerial by mutableIntStateOf(0)
+    private var rippleAt = 0L
+    var flashIcon by mutableStateOf<ImageVector?>(null)
+    var flashSerial by mutableIntStateOf(0)
 
     fun show() { controls = true; poke++ }
+
+    fun flash(icon: ImageVector) { flashIcon = icon; flashSerial++ }
+
+    fun togglePlay(p: Player) {
+        if (p.idle) return
+        flash(if (p.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause); p.togglePause()
+    }
+
+    /** Seek by [s] seconds and show the bubble; quick repeats on the same side add up (−5 s, −10 s, …). */
+    fun seek(p: Player, s: Double) {
+        if (p.idle) return
+        p.seekBy(s)
+        val side = if (s < 0) -1 else 1
+        val step = abs(s).roundToInt()
+        val now = System.currentTimeMillis()
+        rippleAmount = if (side == rippleSide && step == rippleStep && now - rippleAt < 700) rippleAmount + step else step
+        rippleSide = side; rippleStep = step; rippleAt = now; rippleSerial++
+    }
 
     fun nudgeSub(p: Player, d: Double) {
         val v = ((p.subDelay + d) * 1000).roundToInt() / 1000.0
@@ -201,11 +231,6 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
     var dragLevel by remember { mutableFloatStateOf(0f) }
     var seekPreview by remember { mutableStateOf(0.0) }
     var seekDelta by remember { mutableStateOf(0.0) }
-    var rippleSide by remember { mutableIntStateOf(0) }
-    var rippleAmount by remember { mutableIntStateOf(0) }
-    var rippleSerial by remember { mutableIntStateOf(0) }
-    var flashIcon by remember { mutableStateOf<ImageVector?>(null) }
-    var flashSerial by remember { mutableIntStateOf(0) }
     var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
 
     val panelOpen = ui.panel != null
@@ -217,8 +242,8 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
 
     BackHandler(panelOpen || ui.speedOpen) { ui.panel = null; ui.speedOpen = false }
 
-    fun flash(icon: ImageVector) { flashIcon = icon; flashSerial++ }
-    fun togglePlay() { flash(if (p.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause); p.togglePause(); ui.show() }
+    fun flash(icon: ImageVector) = ui.flash(icon)
+    fun togglePlay() { ui.togglePlay(p); ui.show() }
 
     Box(
         Modifier.fillMaxSize().background(if (ShotHooks.transparent) Color.Transparent else Color.Black).onSizeChanged { size = it },
@@ -311,13 +336,11 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
                     val side = when { x < w * 0.35f -> -1; x > w * 0.65f -> 1; else -> 0 }
                     if (ui.locked) { ui.show(); return@awaitEachGesture }
                     val isDouble = now - lastTapAt < 300 && abs(x - lastTapX) < w * 0.2f
-                    val inSeekRun = side != 0 && now - seekRun < 700 && rippleSide == side
+                    val inSeekRun = side != 0 && now - seekRun < 700 && ui.rippleSide == side
                     if ((isDouble || inSeekRun) && !p.idle) {
                         singleJob?.cancel()
                         if (side != 0) {
-                            p.seekBy(10.0 * side)
-                            rippleAmount = if (inSeekRun) rippleAmount + 10 else 10
-                            rippleSide = side; rippleSerial++
+                            ui.seek(p, 10.0 * side)
                             seekRun = now
                         } else {
                             // centre double-tap: fit ↔ fill (crop the black bars)
@@ -341,10 +364,10 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
         )
 
         // ---- double-tap seek ripples ----
-        SeekRipple(rippleSide, rippleAmount, rippleSerial, Modifier.fillMaxSize())
+        SeekRipple(ui.rippleSide, ui.rippleAmount, ui.rippleStep, ui.rippleSerial, Modifier.fillMaxSize())
 
         // ---- centre flash (play/pause) ----
-        CenterFlash(flashIcon, flashSerial, Modifier.align(Alignment.Center))
+        CenterFlash(ui.flashIcon, ui.flashSerial, Modifier.align(Alignment.Center))
 
         // ---- buffering / opening ----
         if ((p.loading || p.buffering) && !pip) Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -665,12 +688,12 @@ private fun GestureIndicator(mode: Drag, level: Float, preview: Double, delta: D
 }
 
 @Composable
-private fun SeekRipple(side: Int, amount: Int, serial: Int, modifier: Modifier) {
+private fun SeekRipple(side: Int, amount: Int, step: Int, serial: Int, modifier: Modifier) {
     val accent = LocalAccent.current
     val a = remember { Animatable(0f) }
     LaunchedEffect(serial) {
         if (serial == 0) return@LaunchedEffect
-        a.snapTo(1f); a.animateTo(0f, tween(700, easing = LinearEasing))
+        a.snapTo(1f); if (!ShotHooks.still) a.animateTo(0f, tween(700, easing = LinearEasing))
     }
     if (a.value <= 0f || side == 0) return
     BoxWithConstraints(modifier) {
@@ -681,7 +704,12 @@ private fun SeekRipple(side: Int, amount: Int, serial: Int, modifier: Modifier) 
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(if (side < 0) Icons.Rounded.Replay10 else Icons.Rounded.Forward10, null, tint = Color.White.copy(alpha = a.value), modifier = Modifier.size(40.dp))
+                val icon = when (step) {
+                    5 -> if (side < 0) Icons.Rounded.Replay5 else Icons.Rounded.Forward5
+                    10 -> if (side < 0) Icons.Rounded.Replay10 else Icons.Rounded.Forward10
+                    else -> if (side < 0) Icons.Rounded.FastRewind else Icons.Rounded.FastForward
+                }
+                Icon(icon, null, tint = Color.White.copy(alpha = a.value), modifier = Modifier.size(40.dp))
                 Text((if (side < 0) "−" else "+") + "$amount s", color = Color.White.copy(alpha = a.value), fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -694,7 +722,7 @@ private fun CenterFlash(icon: ImageVector?, serial: Int, modifier: Modifier) {
     val a = remember { Animatable(0f) }
     LaunchedEffect(serial) {
         if (serial == 0) return@LaunchedEffect
-        a.snapTo(1f); a.animateTo(0f, tween(600))
+        a.snapTo(1f); if (!ShotHooks.still) a.animateTo(0f, tween(600))
     }
     if (icon == null || a.value <= 0f) return
     Box(
