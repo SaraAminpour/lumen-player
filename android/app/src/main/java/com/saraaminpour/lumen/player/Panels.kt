@@ -91,6 +91,11 @@ import com.saraaminpour.lumen.ui.LSlider
 import com.saraaminpour.lumen.ui.LSwitch
 import com.saraaminpour.lumen.ui.Label
 import com.saraaminpour.lumen.ui.LocalAccent
+import com.saraaminpour.lumen.ui.LocalTv
+import com.saraaminpour.lumen.ui.focusRing
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import com.saraaminpour.lumen.ui.PillButton
 import com.saraaminpour.lumen.ui.Section
 import com.saraaminpour.lumen.ui.SettingsContent
@@ -113,6 +118,10 @@ private val TABS = listOf(
 fun SidePanel(p: Player, ui: PlayerUiState, prefs: Prefs, updater: Updater, activity: PlayerActivity) {
     val accent = LocalAccent.current
     val id = ui.panel ?: return
+    val tv = LocalTv.current
+    val tabFocus = remember { FocusRequester() }
+    // with a remote, opening a panel moves the focus into it
+    if (tv) LaunchedEffect(Unit) { runCatching { tabFocus.requestFocus() } }
     Column(
         Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(C.glass)
             .border(1.dp, accent.light.copy(alpha = 0.25f), RoundedCornerShape(24.dp)).clickable(enabled = false) {},
@@ -130,6 +139,8 @@ fun SidePanel(p: Player, ui: PlayerUiState, prefs: Prefs, updater: Updater, acti
                 Column(
                     Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
                         .background(if (on) accent.a.copy(alpha = 0.28f) else Color.Transparent)
+                        .then(if (on) Modifier.focusRequester(tabFocus) else Modifier)
+                        .focusRing(RoundedCornerShape(12.dp))
                         .clickable { ui.panel = t.id }.padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -148,9 +159,7 @@ fun SidePanel(p: Player, ui: PlayerUiState, prefs: Prefs, updater: Updater, acti
                 "video" -> VideoPage(p, ui, prefs)
                 "playlist" -> PlaylistPage(p, ui)
                 "info" -> InfoPage(p, ui)
-                "settings" -> SettingsContent(prefs, updater) {
-                    p.set("hwdec", if (prefs.hwdec) "mediacodec-copy" else "no")
-                }
+                "settings" -> SettingsContent(prefs, updater) { p.applyHwdec() }
             }
         }
     }
@@ -166,6 +175,7 @@ private fun TrackList(p: Player, type: String, selected: String, offText: String
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                     .background(if (on) accent.a.copy(alpha = 0.2f) else Color.Transparent)
                     .border(1.dp, if (on) accent.light.copy(alpha = 0.5f) else Color.Transparent, RoundedCornerShape(12.dp))
+                    .focusRing(RoundedCornerShape(12.dp))
                     .clickable(onClick = pick).padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -236,7 +246,7 @@ private fun SubtitlePage(p: Player, ui: PlayerUiState, prefs: Prefs) {
     Section("Track", Icons.Rounded.Subtitles) {
         TrackList(p, "sub", p.sid) { p.selectTrack("sub", it) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton("Load subtitle file…", icon = Icons.Rounded.NoteAdd, height = 34.dp) { pick.launch(arrayOf("*/*")) }
+            if (!LocalTv.current) PillButton("Load subtitle file…", icon = Icons.Rounded.NoteAdd, height = 34.dp) { pick.launch(arrayOf("*/*")) }
             PillButton(if (p.subVisible) "Hide" else "Show", icon = if (p.subVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, height = 34.dp) {
                 p.set("sub-visibility", if (p.subVisible) "no" else "yes")
             }
@@ -244,7 +254,7 @@ private fun SubtitlePage(p: Player, ui: PlayerUiState, prefs: Prefs) {
     }
     Section("Timing", Icons.Rounded.Timer) {
         DelayControl(p.subDelay, delayMeaning(p.subDelay)) { p.changeSubDelay(it); ui.osd.show("Subtitle delay ${fmtDelay(it)}", Icons.Rounded.Timer) }
-        Label("Keyboard: Z / X nudge by 100 ms, Shift+Z / Shift+X by 1 s.", C.textFaint)
+        if (!LocalTv.current) Label("Keyboard: Z / X nudge by 100 ms, Shift+Z / Shift+X by 1 s.", C.textFaint)
     }
     Section("Snap to a line", Icons.Rounded.Sync) {
         Label("Hearing a line whose subtitle is missing or late? Jump the subtitle timing so a neighbouring line shows right now.")
@@ -274,6 +284,7 @@ private fun SubtitlePage(p: Player, ui: PlayerUiState, prefs: Prefs) {
                 Box(
                     Modifier.size(30.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(c)))
                         .border(3.dp, if (on) accent.light else Color.Transparent, CircleShape)
+                        .focusRing(CircleShape)
                         .clickable { prefs.subColor = c; p.applySubStyle() },
                 )
             }
@@ -297,7 +308,7 @@ private fun AudioPage(p: Player, ui: PlayerUiState, prefs: Prefs) {
     }
     Section("Track", Icons.Rounded.MusicNote) {
         TrackList(p, "audio", p.aid, offText = "No audio") { p.selectTrack("audio", it) }
-        PillButton("Load audio file…", icon = Icons.Rounded.NoteAdd, height = 34.dp) { pick.launch(arrayOf("audio/*", "video/*", "*/*")) }
+        if (!LocalTv.current) PillButton("Load audio file…", icon = Icons.Rounded.NoteAdd, height = 34.dp) { pick.launch(arrayOf("audio/*", "video/*", "*/*")) }
     }
     Section("Audio sync", Icons.Rounded.Timer) {
         DelayControl(p.audioDelay, if (abs(p.audioDelay) < 0.0005) "In sync with the picture" else if (p.audioDelay > 0) "Sound plays later" else "Sound plays earlier") {
@@ -333,12 +344,12 @@ private fun VideoPage(p: Player, ui: PlayerUiState, prefs: Prefs) {
                     }
                 }
         }
-        LSwitch("Fill the screen (crop black bars)", p.panscan > 0.5, "Also: double-tap the middle of the video") {
+        LSwitch("Fill the screen (crop black bars)", p.panscan > 0.5, if (LocalTv.current) "" else "Also: double-tap the middle of the video") {
             prefs.fillCrop = it; p.set("panscan", if (it) "1.0" else "0.0")
         }
     }
     Section("Zoom & rotate", Icons.Rounded.ZoomIn) {
-        Label("Zoom  ·  ${(Math.pow(2.0, p.zoom) * 100).roundToInt()}%   (or pinch the video)")
+        Label("Zoom  ·  ${(Math.pow(2.0, p.zoom) * 100).roundToInt()}%" + if (LocalTv.current) "" else "   (or pinch the video)")
         LSlider(p.zoom.toFloat(), -1f..2f, { p.set("video-zoom", String.format(Locale.US, "%.2f", it)) })
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton("", icon = Icons.Rounded.RotateLeft, height = 36.dp) { p.set("video-rotate", ((p.rotate + 270) % 360).toString()) }
@@ -362,9 +373,9 @@ private fun VideoPage(p: Player, ui: PlayerUiState, prefs: Prefs) {
     Section("Quality", Icons.Rounded.AutoFixHigh) {
         LSwitch("Sharpen", p.vf.contains("@sharp"), "Contrast-adaptive sharpening for soft footage") { p.toggleFilter("vf", Player.SHARP) }
         LSwitch("Debanding", p.deband, "Smooths colour banding in dark scenes and skies") { p.set("deband", if (it) "yes" else "no") }
-        LSwitch("Deinterlace", p.deinterlace, "For old TV recordings and DVDs with comb lines") { p.set("deinterlace", if (it) "yes" else "no") }
+        LSwitch("Deinterlace", p.deinterlace, "For old TV recordings and DVDs with comb lines") { p.changeDeinterlace(it) }
         LSwitch("Hardware decoding", prefs.hwdec, if (p.hwdecCurrent.isNotEmpty() && p.hwdecCurrent != "no") "Active: ${p.hwdecCurrent}" else "Using the CPU") {
-            prefs.hwdec = it; p.set("hwdec", if (it) "mediacodec-copy" else "no")
+            prefs.hwdec = it; p.applyHwdec()
         }
     }
     Section("Screenshot", Icons.Rounded.CameraAlt) {
@@ -389,7 +400,7 @@ private fun PlaylistPage(p: Player, ui: PlayerUiState) {
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PillButton("Add files", icon = Icons.Rounded.Add, height = 34.dp) { add.launch(arrayOf("video/*", "audio/*", "*/*")) }
+        if (!LocalTv.current) PillButton("Add files", icon = Icons.Rounded.Add, height = 34.dp) { add.launch(arrayOf("video/*", "audio/*", "*/*")) }
         PillButton("Shuffle", icon = Icons.Rounded.Shuffle, height = 34.dp) { p.shuffleQueue(); ui.osd.show("Playlist shuffled", Icons.Rounded.Shuffle) }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -402,6 +413,7 @@ private fun PlaylistPage(p: Player, ui: PlayerUiState) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                 .background(if (on) accent.a.copy(alpha = 0.22f) else C.card)
+                .focusRing(RoundedCornerShape(12.dp))
                 .clickable { p.play(i) }.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

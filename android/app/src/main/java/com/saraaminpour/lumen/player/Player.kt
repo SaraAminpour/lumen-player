@@ -44,12 +44,25 @@ data class Track(
 }
 
 data class Chapter(val time: Double, val title: String)
-data class QueueItem(val key: String, val title: String, val folder: String = "")
+/**
+ * [id] names the item in the watch history when [key] is not stable: a file streamed from a phone has a
+ * new address every time, but should still resume where it stopped. [startAt] >= 0 overrides the saved position.
+ */
+data class QueueItem(
+    val key: String, val title: String, val folder: String = "", val id: String = "", val startAt: Double = -1.0,
+    /** Name of the phone that sent this with "Play on TV"; empty for everything opened on this device. */
+    val from: String = "",
+) {
+    val historyKey get() = id.ifEmpty { key }
+    /** A file that lives on the phone and is streamed from it (as opposed to a web link the phone passed on). */
+    val phoneFile get() = from.isNotEmpty() && id.startsWith("cast:")
+}
 
 /** libmpv wrapper: owns the mpv instance and exposes its state to Compose. */
 class Player(private val ctx: Context, private val prefs: Prefs, private val history: History) : MPVLib.EventObserver {
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val tv = ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     /** null only where libmpv can't load (JVM screenshot tests); every call is null-safe. */
     val mpv: MPVLib? = try { MPVLib.create(ctx) } catch (t: Throwable) { Log.e(TAG, "mpv unavailable", t); null }
 
@@ -119,7 +132,22 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
     private var pending: Int? = null
     private var restoreFor: String? = null
     private var pendingWebSubs: List<Pair<String, String>> = emptyList()
+    private var starting = false
     var onEvent: (String) -> Unit = {}
+    private var hwdecNow = ""
+
+    // Position, buffer level and the like change on every frame or network packet. One UI update per
+    // change floods the main thread on slow devices (the clock on screen falls seconds behind the picture),
+    // so only the latest value of each is delivered, about 15 times a second.
+    private val batchD = java.util.concurrent.ConcurrentHashMap<String, Double>()
+    private val batchL = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val flushPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val flush = Runnable {
+        flushPending.set(false)
+        for (k in batchD.keys) batchD.remove(k)?.let { onDouble(k, it) }
+        for (k in batchL.keys) batchL.remove(k)?.let { onLong(k, it) }
+    }
+    private fun scheduleFlush() { if (flushPending.compareAndSet(false, true)) main.postDelayed(flush, 66) }
 
     init {
         val config = File(ctx.filesDir, "mpv").apply { mkdirs() }
@@ -136,7 +164,15 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
         mpv?.setOptionString("vo", "gpu")
         mpv?.setOptionString("gpu-context", "android")
         mpv?.setOptionString("opengl-es", "yes")
-        mpv?.setOptionString("hwdec", if (prefs.hwdec) "mediacodec-copy" else "no")
+        // a TV box has a small GPU: plain scaling and no extra passes keep 4K smooth, and a simple filmic
+        // curve brings HDR to the screen (the default curve drops about half the frames of a 4K60 HDR video)
+        if (tv) {
+            mpv?.setOptionString("profile", "fast")
+            mpv?.setOptionString("tone-mapping", "hable")
+            mpv?.setOptionString("gamut-mapping-mode", "clip")
+        }
+        hwdecNow = hwdecValue()
+        mpv?.setOptionString("hwdec", hwdecNow)
         mpv?.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
         mpv?.setOptionString("ao", "audiotrack,opensles")
         mpv?.setOptionString("input-default-bindings", "no")
@@ -174,6 +210,20 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
         set("sub-pos", prefs.subPos.toString())
         applySubStyle()
         if (prefs.normalize != af.contains("@norm")) toggleFilter("af", NORM)
+    }
+
+    /** "mediacodec" hands frames to the screen directly; "mediacodec-copy" copies them so software filters can work on them. */
+    private fun hwdecValue(needFrames: Boolean = vf.isNotEmpty() || deinterlace) = when {
+        !prefs.hwdec -> "no"
+        prefs.directDecode && !needFrames -> "mediacodec,mediacodec-copy"
+        else -> "mediacodec-copy"
+    }
+
+    fun applyHwdec(needFrames: Boolean = vf.isNotEmpty() || deinterlace) {
+        val v = hwdecValue(needFrames)
+        if (v == hwdecNow) return
+        hwdecNow = v
+        set("hwdec", v)
     }
 
     fun applySubStyle() {
@@ -214,16 +264,22 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
         if (!surfaceReady) { pending = i; return }
         val item = queue[i]
         error = ""; eof = false; loading = true; webQuality = ""
-        val saved = if (prefs.resume) history.get(item.key) else null
-        val start = saved?.takeIf { it.pos > 5 && !it.finished }?.pos
-        restoreFor = item.key
+        val saved = if (prefs.resume) history.get(item.historyKey) else null
+        val start = if (item.startAt >= 0) item.startAt.takeIf { it > 1 } else saved?.takeIf { it.pos > 5 && !it.finished }?.pos
+        restoreFor = item.historyKey
         scope.launch {
             try {
                 val target = resolve(item)
                 val opts = ArrayList<String>()
                 opts += "force-media-title=" + q(target.title.ifEmpty { item.title })
                 if (start != null) opts += "start=$start"
+                opts += "pause=no"            // the previous file pauses itself at its last frame (keep-open)
                 target.audio?.let { opts += "audio-file=" + q(it) }
+                // a phone's Wi-Fi can drop for a moment: pick the stream up again where it stopped
+                if (item.phoneFile) {
+                    opts += "stream-lavf-o=" + q("reconnect=1,reconnect_delay_max=30")
+                    opts += "network-timeout=20"
+                }
                 pendingWebSubs = target.subs
                 webQuality = target.quality
                 mpv?.command(arrayOf("loadfile", target.url, "replace", "-1", opts.joinToString(",")))
@@ -231,6 +287,7 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
                 Log.w(TAG, "open failed", e)
                 loading = false
                 error = when {
+                    item.phoneFile -> "Couldn't reach the phone"
                     item.key.startsWith("http") -> "Couldn't open this link" + (e.message?.let { ": ${it.take(90)}" } ?: "")
                     else -> "Couldn't open this file"
                 }
@@ -250,6 +307,7 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
                     ?: throw IllegalStateException("no file descriptor")
                 Target("fdclose://${pfd.detachFd()}", item.title)
             }
+            item.phoneFile -> Target(k, item.title)                   // a file on a phone: nothing to look up
             k.startsWith("http", true) && WebVideo.isWebPage(k) -> {
                 val r = WebVideo.resolve(k, prefs.streamQuality)
                 Target(r.video, r.title, r.audio, r.subtitles, r.quality)
@@ -306,7 +364,15 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
     fun selectTrack(type: String, id: Int?) = set(if (type == "sub") "sid" else if (type == "audio") "aid" else "vid", id?.toString() ?: "no")
     fun selectSecondary(id: Int?) = set("secondary-sid", id?.toString() ?: "no")
 
-    fun toggleFilter(kind: String, spec: String) = cmd(kind, "toggle", spec)
+    fun toggleFilter(kind: String, spec: String) {
+        if (kind == "vf") applyHwdec(needFrames = true)      // before the filter arrives; undone when the list is empty again
+        cmd(kind, "toggle", spec)
+    }
+
+    fun changeDeinterlace(on: Boolean) {
+        if (on) applyHwdec(needFrames = true)
+        set("deinterlace", if (on) "yes" else "no")
+    }
 
     fun addSubtitle(uri: Uri, name: String) = scope.launch {
         val fd = withContext(Dispatchers.IO) { ctx.contentResolver.openFileDescriptor(uri, "r")?.detachFd() } ?: return@launch
@@ -359,7 +425,7 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
         val nearEnd = duration - position < 30
         history.put(
             HistoryEntry(
-                key = item.key, title = mediaTitle.ifEmpty { item.title }, pos = if (nearEnd) 0.0 else position,
+                key = item.historyKey, title = mediaTitle.ifEmpty { item.title }, pos = if (nearEnd) 0.0 else position,
                 dur = duration, time = System.currentTimeMillis(), folder = item.folder, sid = sid, aid = aid,
                 secondarySid = secondarySid, subDelay = subDelay, audioDelay = audioDelay,
             )
@@ -381,28 +447,48 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
     fun destroy() {
         saveState()
         scope.cancel()
+        main.removeCallbacks(flush)
         mpv?.removeObserver(this)
         mpv?.destroy()
     }
 
     // ---- mpv events (native thread) ----
     override fun eventProperty(property: String) { main.post { onNoneProperty(property) } }
-    override fun eventProperty(property: String, value: Long) { main.post { onLong(property, value) } }
-    override fun eventProperty(property: String, value: Double) { main.post { onDouble(property, value) } }
+    override fun eventProperty(property: String, value: Long) {
+        if (property in BATCHED) { batchL[property] = value; scheduleFlush() } else main.post { onLong(property, value) }
+    }
+    override fun eventProperty(property: String, value: Double) {
+        if (property in BATCHED) { batchD[property] = value; scheduleFlush() } else main.post { onDouble(property, value) }
+    }
+
     override fun eventProperty(property: String, value: Boolean) { main.post { onFlag(property, value) } }
     override fun eventProperty(property: String, value: String) { main.post { onString(property, value) } }
     override fun event(eventId: Int) { main.post { onMpvEvent(eventId) } }
 
     private fun onMpvEvent(id: Int) {
         when (id) {
+            MpvEvent.MPV_EVENT_START_FILE -> starting = true
             MpvEvent.MPV_EVENT_FILE_LOADED -> {
-                loading = false
+                loading = false; starting = false
                 restoreState()
                 pendingWebSubs.forEach { (url, lang) -> cmd("sub-add", url, "auto", lang, lang) }
                 pendingWebSubs = emptyList()
                 onEvent("loaded")
             }
-            MpvEvent.MPV_EVENT_END_FILE -> loading = false
+            MpvEvent.MPV_EVENT_END_FILE -> {
+                loading = false
+                if (starting) {                 // ended before it ever loaded: the file or link could not be opened
+                    starting = false
+                    val item = current
+                    error = when {
+                        item == null -> ""
+                        item.phoneFile -> "Couldn't reach the phone. Keep Lumen open on it and stay on the same Wi-Fi."
+                        item.key.startsWith("http") -> "Couldn't open this link"
+                        else -> "Couldn't open this file"
+                    }
+                    if (error.isNotEmpty()) onEvent("error")
+                }
+            }
             MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> loading = false
         }
     }
@@ -484,8 +570,8 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
             "ab-loop-a" -> abA = v
             "ab-loop-b" -> abB = v
             "video-aspect-override" -> aspectOverride = v
-            "deinterlace" -> deinterlace = v == "yes"
-            "vf" -> vf = v
+            "deinterlace" -> { deinterlace = v == "yes"; applyHwdec() }
+            "vf" -> { vf = v; applyHwdec() }
             "af" -> af = v
             "file-format" -> fileFormat = v
         }
@@ -521,6 +607,9 @@ class Player(private val ctx: Context, private val prefs: Prefs, private val his
         const val NORM = "@norm:lavfi=[dynaudnorm=f=250:g=31:p=0.5]"
         const val SHARP = "@sharp:lavfi=[cas=0.6]"
         const val FLIP = "@flip:hflip"
+        private val BATCHED = setOf(
+            "time-pos", "demuxer-cache-time", "estimated-vf-fps", "video-bitrate", "audio-bitrate", "frame-drop-count",
+        )
         private val OBSERVED = listOf(
             "time-pos" to MpvFormat.MPV_FORMAT_DOUBLE, "duration" to MpvFormat.MPV_FORMAT_DOUBLE,
             "pause" to MpvFormat.MPV_FORMAT_FLAG, "idle-active" to MpvFormat.MPV_FORMAT_FLAG,

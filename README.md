@@ -158,9 +158,36 @@ downloads new versions; Android then asks you to confirm the install.
   </tr>
 </table>
 
+### Android TV and Play on TV
+
+The same APK also runs on Android TV and Google TV. Install it on the TV as you would on a phone, for example
+with a file manager app or `adb install`. Lumen then appears in the apps row of the TV, the home screen is laid
+out for a television, and every control can be reached with the remote. In the player, **OK** plays and pauses,
+left and right jump 10 seconds, and up or down shows the controls.
+
+<p align="center">
+  <img src="docs/screenshots/android-tv-home.jpg" alt="Lumen home screen on Android TV" width="900">
+</p>
+
+**Play on TV** streams a video from your phone to the TV over your home network. Nothing is copied to the TV.
+The phone serves the file, the TV plays it as it arrives, and you can seek anywhere in a long recording.
+
+1. Install Lumen on the TV and on the phone, and connect both to the same network.
+2. Open Lumen on the TV once. Its home screen shows **Ready**.
+3. On the phone, open Lumen and tap **Play on TV**, then choose one or more videos from the gallery or the
+   file browser. You can also share a video to **Play on TV (Lumen)** from another app, or tap the TV icon
+   in the player to move what you are watching.
+4. Pick the TV from the list. The first time, the TV asks whether this phone may play. Press **Allow**.
+
+The phone then works as a remote with play, pause, seek, next, previous and stop. A notification shows what is
+playing, and the phone keeps serving the file while its screen is off. The TV remembers where each video stopped.
+If the TV is missing from the list, tap **Add a TV by its address** and type the address shown on the home
+screen of the TV. A phone can also start a video while Lumen is closed on the TV once you turn on
+**Settings → Start when Lumen is closed** there.
+
 ### Requirements
 
-- Windows 10 or 11, 64-bit, or Android 8.0 or newer
+- Windows 10 or 11, 64-bit, or Android 8.0 or newer (phones, tablets, Android TV and Google TV)
 - A GPU with OpenGL 3.3 (any Intel, AMD or NVIDIA GPU from the last decade)
 - About 260 MB of disk space
 

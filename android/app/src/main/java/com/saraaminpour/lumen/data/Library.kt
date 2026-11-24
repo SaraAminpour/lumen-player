@@ -88,6 +88,40 @@ object Library {
         }
     } catch (_: Exception) { uri.lastPathSegment }
 
+    private val PICKER_NAME = Regex("^\\d+\\.[A-Za-z0-9]{2,5}$")
+
+    /**
+     * A name a person recognises. Android's photo picker hides file names behind numbers
+     * ("1000000136.mp4"); for those, say when the video was taken instead.
+     */
+    fun title(ctx: Context, uri: Uri): String {
+        val raw = displayName(ctx, uri)?.takeIf { it.isNotBlank() } ?: return "Video"
+        if (!PICKER_NAME.matches(raw)) return raw
+        val taken = dateTaken(ctx, uri)
+        return if (taken <= 0) "Video"
+        else "Video from " + java.text.SimpleDateFormat("d MMM yyyy, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(taken))
+    }
+
+    private fun dateTaken(ctx: Context, uri: Uri): Long {
+        try {
+            ctx.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATE_TAKEN), null, null, null)?.use { c ->
+                if (c.moveToFirst() && !c.isNull(0) && c.getLong(0) > 0) return c.getLong(0)
+            }
+        } catch (_: Exception) { }
+        // the recording date stored in the file itself, e.g. 20261122T151432.000Z
+        return try {
+            val r = android.media.MediaMetadataRetriever()
+            try {
+                r.setDataSource(ctx, uri)
+                val d = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DATE) ?: return 0
+                val f = java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss", java.util.Locale.US)
+                f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                val t = f.parse(d.take(15))?.time ?: 0
+                if (t > 86_400_000L * 365) t else 0          // files without a date report 1904 or 1970
+            } finally { r.release() }
+        } catch (_: Exception) { 0 }
+    }
+
     fun fileSize(ctx: Context, uri: Uri): Long = try {
         ctx.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
             if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else -1L
