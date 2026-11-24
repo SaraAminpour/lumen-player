@@ -83,7 +83,9 @@ fun LumenTheme(accentIndex: Int, content: @Composable () -> Unit) {
             headlineLarge = base.copy(fontSize = 40.sp, fontWeight = FontWeight.ExtraBold),
         ),
     ) {
-        CompositionLocalProvider(LocalAccent provides accent, content = content)
+        val tv = androidx.compose.ui.platform.LocalContext.current.packageManager
+            .hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        CompositionLocalProvider(LocalAccent provides accent, LocalTv provides tv, content = content)
     }
 }
 

@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -80,7 +81,8 @@ import kotlin.math.sin
 @Composable
 fun Blobs(modifier: Modifier = Modifier) {
     val accent = LocalAccent.current
-    val t = if (com.saraaminpour.lumen.player.ShotHooks.still) 0.8f else rememberInfiniteTransition(label = "blobs").animateFloat(
+    // drawn once on a TV: repainting two full-screen glows 60 times a second keeps a TV box's CPU busy for nothing
+    val t = if (com.saraaminpour.lumen.player.ShotHooks.still || LocalTv.current) 0.8f else rememberInfiniteTransition(label = "blobs").animateFloat(
         0f, (2 * Math.PI).toFloat(), infiniteRepeatable(tween(16000, easing = LinearEasing), RepeatMode.Restart), label = "p",
     ).value
     Canvas(modifier.fillMaxSize()) {
@@ -198,7 +200,9 @@ fun qualityName(h: Int) = when (h) { 0 -> "Best"; 2160 -> "4K"; else -> "${h}p" 
 fun SettingsContent(prefs: Prefs, updater: Updater, onPlayerPrefs: () -> Unit = {}) {
     val ctx = LocalContext.current
     val accent = LocalAccent.current
+    val tv = LocalTv.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CastSettings(prefs)
         Section("Look", Icons.Rounded.Palette) {
             Label("Accent  ·  ${accent.name}")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -206,27 +210,30 @@ fun SettingsContent(prefs: Prefs, updater: Updater, onPlayerPrefs: () -> Unit = 
                     Box(
                         Modifier.size(34.dp).clip(CircleShape)
                             .border(2.dp, if (prefs.accent == i) Color.White else Color.Transparent, CircleShape)
+                            .focusRing(CircleShape)
                             .clickable { prefs.accent = i }.padding(5.dp).clip(CircleShape).background(a.brush),
                     )
                 }
             }
-            LSwitch("Seek-bar previews", prefs.thumbnails, "Thumbnail of the frame under your finger") { prefs.thumbnails = it }
+            LSwitch("Seek-bar previews", prefs.thumbnails, if (tv) "Thumbnail of the frame you are seeking to" else "Thumbnail of the frame under your finger") { prefs.thumbnails = it }
             LSwitch("Show remaining time", prefs.showRemaining) { prefs.showRemaining = it }
         }
         Section("Playback", Icons.Rounded.PlayCircleOutline) {
             LSwitch("Resume where I left off", prefs.resume, "Remembers position, tracks and delays per file") { prefs.resume = it }
             LSwitch("Queue the rest of the folder", prefs.autoQueue, "Opening an episode adds the next ones automatically") { prefs.autoQueue = it }
-            LSwitch("Swipe gestures", prefs.gestures, "Left side: brightness · right side: volume · sideways: seek") { prefs.gestures = it }
-            LSwitch("Rotate to fit the video", prefs.autoRotate, "Landscape for wide videos, portrait for tall ones") { prefs.autoRotate = it }
-            LSwitch("Keep playing in the background", prefs.backgroundAudio, "Audio continues when you leave the app") { prefs.backgroundAudio = it }
-            LSwitch("Hardware decoding", prefs.hwdec, "Uses the phone's video decoder. Turn off if a file shows glitches") {
+            if (!tv) {
+                LSwitch("Swipe gestures", prefs.gestures, "Left side: brightness · right side: volume · sideways: seek") { prefs.gestures = it }
+                LSwitch("Rotate to fit the video", prefs.autoRotate, "Landscape for wide videos, portrait for tall ones") { prefs.autoRotate = it }
+                LSwitch("Keep playing in the background", prefs.backgroundAudio, "Audio continues when you leave the app") { prefs.backgroundAudio = it }
+            }
+            LSwitch("Hardware decoding", prefs.hwdec, "Uses the ${if (tv) "TV" else "phone"}'s video decoder. Turn off if a file shows glitches") {
                 prefs.hwdec = it; onPlayerPrefs()
             }
             Label("Streaming quality  ·  ${qualityName(prefs.streamQuality)}")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(480, 720, 1080, 1440, 2160, 0).forEach { h -> Chip(qualityName(h), prefs.streamQuality == h) { prefs.streamQuality = h } }
             }
-            Label("For YouTube and other web videos. Lower it on mobile data.", C.textFaint)
+            Label(if (tv) "For YouTube and other web videos." else "For YouTube and other web videos. Lower it on mobile data.", C.textFaint)
         }
         Section("Updates", Icons.Rounded.Update) {
             Text(
@@ -249,17 +256,55 @@ fun SettingsContent(prefs: Prefs, updater: Updater, onPlayerPrefs: () -> Unit = 
                     }
                 if (updater.state != Updater.State.Downloading && updater.state != Updater.State.Checking)
                     PillButton("Check for updates", icon = Icons.Rounded.Refresh, height = 36.dp) { updater.check(false) }
-                PillButton("Release notes", icon = Icons.Rounded.OpenInNew, height = 36.dp) {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.RELEASES)))
+                if (!tv) PillButton("Release notes", icon = Icons.Rounded.OpenInNew, height = 36.dp) {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.RELEASES))) }
                 }
             }
             LSwitch("Check for updates automatically", prefs.autoUpdate, "Once a day. Nothing installs without your OK") { prefs.autoUpdate = it }
         }
         Section("About", Icons.Rounded.Tune) {
-            Text("Lumen ${BuildConfig.VERSION_NAME} for Android  ·  powered by mpv and FFmpeg", color = C.textFaint, fontSize = 12.sp)
+            Text("Lumen ${BuildConfig.VERSION_NAME} for Android${if (tv) " TV" else ""}  ·  powered by mpv and FFmpeg", color = C.textFaint, fontSize = 12.sp)
             Text("github.com/SaraAminpour/lumen-player", color = accent.light, fontSize = 12.sp,
-                modifier = Modifier.clickable { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SaraAminpour/lumen-player"))) })
+                modifier = if (tv) Modifier else Modifier.clickable {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SaraAminpour/lumen-player"))) }
+                })
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** "Play on TV" settings: on a TV, who may play here; on a phone, whether it can be a target too. */
+@Composable
+private fun CastSettings(prefs: Prefs) {
+    val ctx = LocalContext.current
+    val tv = LocalTv.current
+    val here = if (tv) "TV" else "device"
+    Section(if (tv) "Play from your phone" else "Play on TV", Icons.Rounded.Cast) {
+        LSwitch(
+            "Let phones play on this $here", prefs.castReceive,
+            if (tv) "A phone with Lumen on the same Wi-Fi can send videos here" else "Other devices with Lumen on the same Wi-Fi can send videos here",
+        ) { prefs.castReceive = it; com.saraaminpour.lumen.cast.ReceiverService.sync(ctx) }
+        if (prefs.castReceive) {
+            LSwitch("Ask before a new phone can play", prefs.castAsk, "The first time, press Allow on this $here") { prefs.castAsk = it }
+            var overlay by remember { mutableStateOf(android.provider.Settings.canDrawOverlays(ctx)) }
+            val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            androidx.compose.runtime.DisposableEffect(owner) {
+                val o = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                    if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) overlay = android.provider.Settings.canDrawOverlays(ctx)
+                }
+                owner.lifecycle.addObserver(o)
+                onDispose { owner.lifecycle.removeObserver(o) }
+            }
+            LSwitch(
+                "Start when Lumen is closed", overlay,
+                if (overlay) "A phone can start a video from any screen of this $here"
+                else "Opens Android's \"Display over other apps\" setting: allow Lumen there",
+            ) { com.saraaminpour.lumen.openOverlaySetting(ctx) }
+            val n = com.saraaminpour.lumen.cast.Receiver.allowedCount
+            var forgotten by remember { mutableStateOf(false) }
+            if (n > 0 && !forgotten) PillButton(if (n == 1) "Forget the 1 allowed phone" else "Forget the $n allowed phones", height = 36.dp) {
+                com.saraaminpour.lumen.cast.Receiver.forgetPhones(); forgotten = true
+            }
+        }
     }
 }

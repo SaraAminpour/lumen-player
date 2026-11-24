@@ -86,6 +86,14 @@ import com.saraaminpour.lumen.ui.C
 import com.saraaminpour.lumen.ui.IconBtn
 import com.saraaminpour.lumen.ui.LinkDialog
 import com.saraaminpour.lumen.ui.LocalAccent
+import com.saraaminpour.lumen.ui.LocalTv
+import com.saraaminpour.lumen.ui.focusRing
+import com.saraaminpour.lumen.cast.CastActivity
+import com.saraaminpour.lumen.cast.CastPrompt
+import com.saraaminpour.lumen.cast.CastSession
+import com.saraaminpour.lumen.cast.ReceiverService
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.CastConnected
 import com.saraaminpour.lumen.ui.LumenTheme
 import com.saraaminpour.lumen.ui.PillButton
 import com.saraaminpour.lumen.ui.SettingsContent
@@ -101,6 +109,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIntent(intent)
+        ReceiverService.sync(this)
         setContent {
             val app = lumen
             LumenTheme(app.prefs.accent) { Home() }
@@ -136,6 +145,7 @@ private fun Home() {
     var linkOpen by remember { mutableStateOf(false) }
     var permission by remember { mutableStateOf(hasVideoPermission(ctx)) }
     var refresh by remember { mutableStateOf(0) }
+    val tv = LocalTv.current
 
     LaunchedEffect(Unit) {
         delay(1500)
@@ -171,6 +181,13 @@ private fun Home() {
                 Screen.Settings -> SubPage("Settings", { screen = Screen.Home }) {
                     item { SettingsContent(app.prefs, app.updater) }
                 }
+                Screen.Home -> if (tv) TvHome(
+                    permission, refresh, { askPermission.launch(videoPermissions()) },
+                    { f -> folder = f; screen = Screen.Folder }, { linkOpen = true }, { screen = Screen.Settings },
+                ) else PhoneHome(
+                    permission, refresh, { askPermission.launch(videoPermissions()) }, { f -> folder = f; screen = Screen.Folder },
+                    { linkOpen = true }, { screen = Screen.Settings }, { pickFiles.launch(MEDIA_TYPES) }, { pickFolder.launch(null) },
+                )
                 Screen.Folder -> folder?.let { f ->
                     SubPage(f.name, { screen = Screen.Home }) {
                         itemsIndexed(f.videos) { i, v ->
@@ -180,74 +197,86 @@ private fun Home() {
                         }
                     }
                 }
-                Screen.Home -> LazyColumn(
-                    Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
-                    contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    item {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            IconBtn(Icons.Rounded.Settings, desc = "Settings") { screen = Screen.Settings }
-                        }
-                    }
-                    item {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Image(painterResource(R.drawable.lumen_logo), null, Modifier.size(88.dp))
-                            Spacer(Modifier.height(10.dp))
-                            Text("Lumen", fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, color = C.text)
-                            Text("Open a video, a folder or a link.", color = C.textDim, fontSize = 14.sp)
-                        }
-                    }
-                    item {
-                        Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton("Open file", Modifier.fillMaxWidth(), Icons.Rounded.FolderOpen, primary = true, height = 48.dp) {
-                                pickFiles.launch(MEDIA_TYPES)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                PillButton("Open folder", Modifier.weight(1f), Icons.Rounded.Folder, height = 46.dp) { pickFolder.launch(null) }
-                                PillButton("Open link", Modifier.weight(1f), Icons.Rounded.Link, height = 46.dp) { linkOpen = true }
-                            }
-                        }
-                    }
-                    item { UpdateCard(app.updater, Modifier.widthIn(max = 520.dp)) }
-                    val cont = app.history.continueWatching()
-                    if (cont.isNotEmpty()) {
-                        item { Heading("Continue watching") }
-                        item {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                                items(cont, key = { it.key }) { e -> ContinueCard(e, { app.history.remove(e.key) }) { ctx.playUri(Uri.parse(e.key), e.title) } }
-                            }
-                        }
-                    }
-                    item { Heading("Your videos") }
-                    if (!permission) item {
-                        Column(
-                            Modifier.widthIn(max = 520.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.card)
-                                .border(1.dp, C.glassBorder, RoundedCornerShape(18.dp)).padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Text("See the videos on this phone, sorted by folder, and let Lumen queue the next episode.", color = C.textDim, fontSize = 13.sp)
-                            PillButton("Show my videos", icon = Icons.Rounded.VideoLibrary, primary = true) {
-                                askPermission.launch(videoPermissions())
-                            }
-                        }
-                    } else item {
-                        val folders by produceState<List<Folder>?>(null, refresh) { value = withContext(Dispatchers.IO) { Library.folders(ctx) } }
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.widthIn(max = 720.dp)) {
-                            when {
-                                folders == null -> Text("Looking for videos…", color = C.textFaint, fontSize = 13.sp)
-                                folders!!.isEmpty() -> Text("No videos found on this phone yet.", color = C.textFaint, fontSize = 13.sp)
-                                else -> folders!!.forEach { f ->
-                                    FolderRow(f) { folder = f; screen = Screen.Folder }
-                                }
-                            }
-                        }
-                    }
-                    item { Spacer(Modifier.height(12.dp)) }
-                }
             }
         }
         if (linkOpen) LinkDialog({ linkOpen = false }) { linkOpen = false; ctx.playUri(Uri.parse(it)) }
+        CastPrompt()
+    }
+}
+
+@Composable
+private fun PhoneHome(
+    permission: Boolean, refresh: Int, askPermission: () -> Unit, openFolder: (Folder) -> Unit,
+    openLink: () -> Unit, openSettings: () -> Unit, pickFiles: () -> Unit, pickFolder: () -> Unit,
+) {
+    val ctx = LocalContext.current
+    val app = ctx.lumen
+    val accent = LocalAccent.current
+    LazyColumn(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
+        contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconBtn(Icons.Rounded.Settings, desc = "Settings", onClick = openSettings)
+            }
+        }
+        item {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(painterResource(R.drawable.lumen_logo), null, Modifier.size(88.dp))
+                Spacer(Modifier.height(10.dp))
+                Text("Lumen", fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, color = C.text)
+                Text("Open a video, a folder or a link.", color = C.textDim, fontSize = 14.sp)
+            }
+        }
+        item {
+            Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Open file", Modifier.fillMaxWidth(), Icons.Rounded.FolderOpen, primary = true, height = 48.dp, onClick = pickFiles)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PillButton("Open folder", Modifier.weight(1f), Icons.Rounded.Folder, height = 46.dp, onClick = pickFolder)
+                    PillButton("Open link", Modifier.weight(1f), Icons.Rounded.Link, height = 46.dp, onClick = openLink)
+                }
+                val casting = CastSession.active
+                PillButton(
+                    if (casting) "Playing on ${CastSession.tv?.name ?: "TV"}" else "Play on TV", Modifier.fillMaxWidth(),
+                    if (casting) Icons.Rounded.CastConnected else Icons.Rounded.Cast, checked = casting, height = 46.dp,
+                ) {
+                    ctx.startActivity(Intent(ctx, CastActivity::class.java).putExtra(CastActivity.EXTRA_PICK, !casting))
+                }
+            }
+        }
+        item { UpdateCard(app.updater, Modifier.widthIn(max = 520.dp)) }
+        val cont = app.history.continueWatching()
+        if (cont.isNotEmpty()) {
+            item { Heading("Continue watching") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    items(cont, key = { it.key }) { e -> ContinueCard(e, { app.history.remove(e.key) }) { ctx.playUri(Uri.parse(e.key), e.title) } }
+                }
+            }
+        }
+        item { Heading("Your videos") }
+        if (!permission) item {
+            Column(
+                Modifier.widthIn(max = 520.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.card)
+                    .border(1.dp, C.glassBorder, RoundedCornerShape(18.dp)).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("See the videos on this phone, sorted by folder, and let Lumen queue the next episode.", color = C.textDim, fontSize = 13.sp)
+                PillButton("Show my videos", icon = Icons.Rounded.VideoLibrary, primary = true, onClick = askPermission)
+            }
+        } else item {
+            val folders by produceState<List<Folder>?>(null, refresh) { value = withContext(Dispatchers.IO) { Library.folders(ctx) } }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.widthIn(max = 720.dp)) {
+                when {
+                    folders == null -> Text("Looking for videos…", color = C.textFaint, fontSize = 13.sp)
+                    folders!!.isEmpty() -> Text("No videos found on this phone yet.", color = C.textFaint, fontSize = 13.sp)
+                    else -> folders!!.forEach { f -> FolderRow(f) { openFolder(f) } }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(12.dp)) }
     }
 }
 
@@ -274,7 +303,11 @@ private fun Heading(t: String) = Text(
 
 @Composable
 private fun SubPage(title: String, back: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+    val tv = LocalTv.current
+    Column(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
+            .then(if (tv) Modifier.padding(horizontal = 150.dp, vertical = 16.dp) else Modifier),
+    ) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconBtn(Icons.Rounded.ArrowBack, desc = "Back", onClick = back)
             Spacer(Modifier.width(6.dp))
@@ -332,7 +365,8 @@ private fun FolderRow(f: Folder, open: () -> Unit) {
     val accent = LocalAccent.current
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.card)
-            .border(1.dp, C.glassBorder, RoundedCornerShape(16.dp)).clickable(onClick = open).padding(10.dp),
+            .border(1.dp, C.glassBorder, RoundedCornerShape(16.dp)).focusRing(RoundedCornerShape(16.dp))
+            .clickable(onClick = open).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Thumb(f.videos.first().uri, Modifier.width(96.dp).aspectRatio(16 / 9f))
@@ -349,7 +383,8 @@ private fun FolderRow(f: Folder, open: () -> Unit) {
 private fun VideoRow(uri: Uri, name: String, dur: Double, h: HistoryEntry?, open: () -> Unit) {
     val accent = LocalAccent.current
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.card).clickable(onClick = open).padding(10.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.card).focusRing(RoundedCornerShape(16.dp))
+            .clickable(onClick = open).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {

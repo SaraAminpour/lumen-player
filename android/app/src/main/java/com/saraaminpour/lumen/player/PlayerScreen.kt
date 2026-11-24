@@ -104,6 +104,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -133,6 +142,10 @@ import com.saraaminpour.lumen.ui.IconBtn
 import com.saraaminpour.lumen.ui.LSlider
 import com.saraaminpour.lumen.ui.LinkDialog
 import com.saraaminpour.lumen.ui.LocalAccent
+import com.saraaminpour.lumen.ui.LocalTv
+import com.saraaminpour.lumen.ui.focusRing
+import com.saraaminpour.lumen.cast.CastPrompt
+import androidx.compose.material.icons.rounded.Cast
 import com.saraaminpour.lumen.ui.Osd
 import com.saraaminpour.lumen.ui.OsdState
 import com.saraaminpour.lumen.ui.UpdateCard
@@ -234,12 +247,20 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
     var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
 
     val panelOpen = ui.panel != null
-    // controls hide 3 s after the last touch while playing (desktop: mouse movement)
+    val tv = LocalTv.current
+    val playFocus = remember { FocusRequester() }
+    // controls hide 3 s after the last touch while playing (desktop: mouse movement); a remote gets a little longer
     LaunchedEffect(ui.controls, ui.poke, p.paused, panelOpen, ui.speedOpen, menuOpen) {
-        if (ui.controls && !p.paused && !panelOpen && !ui.speedOpen && !menuOpen) { delay(3500); ui.controls = false }
+        if (ui.controls && !p.paused && !panelOpen && !ui.speedOpen && !menuOpen) { delay(if (tv) 5000 else 3500); ui.controls = false }
     }
     LaunchedEffect(p.paused, p.idle) { activity.updatePip() }
+    // with a remote, focus goes back to play/pause when a panel closes
+    LaunchedEffect(panelOpen, ui.speedOpen) {
+        if (tv && !panelOpen && !ui.speedOpen && ui.controls) { delay(60); runCatching { playFocus.requestFocus() } }
+    }
 
+    // a remote's Back button: first hide the controls, then leave the player
+    BackHandler(tv && ui.controls && !p.idle) { ui.controls = false }
     BackHandler(panelOpen || ui.speedOpen) { ui.panel = null; ui.speedOpen = false }
 
     fun flash(icon: ImageVector) = ui.flash(icon)
@@ -374,7 +395,8 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
             CircularProgressIndicator(color = accent.light, strokeWidth = 4.dp, modifier = Modifier.size(52.dp))
             if (p.loading && p.current?.key?.startsWith("http") == true) {
                 Spacer(Modifier.height(12.dp))
-                Text("Opening link…", color = C.textDim, fontSize = 13.sp)
+                val from = p.current?.from ?: ""
+                Text(if (from.isNotEmpty()) "Getting the video from $from…" else "Opening link…", color = C.textDim, fontSize = 13.sp)
             }
         }
 
@@ -393,7 +415,7 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
                         .padding(end = if (panelOpen && sideways) 410.dp else 0.dp)) {
                         TopBar(p, ui, activity, { menuOpen = it }, menuOpen, { linkOpen = true })
                         Spacer(Modifier.weight(1f))
-                        CenterControls(p, ::togglePlay)
+                        if (p.loading) Spacer(Modifier.height(90.dp)) else CenterControls(p, ::togglePlay, playFocus)
                         Spacer(Modifier.weight(1f))
                         BottomBar(p, ui, prefs, activity)
                     }
@@ -429,8 +451,9 @@ fun PlayerScreen(activity: PlayerActivity, p: Player, ui: PlayerUiState, prefs: 
                 .then(if (ui.controls && !panelOpen) Modifier else Modifier.size(0.dp)))
             Osd(ui.osd, Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
             p.error.takeIf { it.isNotEmpty() && !p.loading && p.idle }?.let {
-                Text(it, color = C.danger, fontSize = 14.sp, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+                Text(it, color = C.danger, fontSize = if (tv) 18.sp else 14.sp, modifier = Modifier.align(Alignment.Center).padding(24.dp))
             }
+            CastPrompt()
         }
         if (linkOpen) LinkDialog({ linkOpen = false; ui.typing = false }) {
             linkOpen = false; ui.typing = false
@@ -458,8 +481,12 @@ private fun TopBar(
             }.joinToString("  ·  ")
             if (sub.isNotEmpty()) Text(sub, color = C.textDim, fontSize = 12.sp, maxLines = 1)
         }
-        IconBtn(Icons.Rounded.PictureInPictureAlt, desc = "Picture in picture") { activity.enterPip() }
-        IconBtn(Icons.Rounded.Lock, desc = "Lock screen") { ui.locked = true; ui.panel = null; ui.osd.show("Screen locked — tap the lock to unlock", Icons.Rounded.Lock) }
+        val tv = LocalTv.current
+        if (!tv) {
+            IconBtn(Icons.Rounded.Cast, desc = "Play on TV") { activity.sendToTv() }
+            IconBtn(Icons.Rounded.PictureInPictureAlt, desc = "Picture in picture") { activity.enterPip() }
+            IconBtn(Icons.Rounded.Lock, desc = "Lock screen") { ui.locked = true; ui.panel = null; ui.osd.show("Screen locked — tap the lock to unlock", Icons.Rounded.Lock) }
+        }
         Box {
             IconBtn(Icons.Rounded.MoreVert, desc = "More") { setMenu(true) }
             DropdownMenu(menuOpen, { setMenu(false) }, containerColor = C.glassSolid) {
@@ -478,29 +505,37 @@ private fun TopBar(
                 item(when { p.abA == "no" -> "A-B loop: set start"; p.abB == "no" -> "A-B loop: set end"; else -> "Clear A-B loop" }, Icons.Rounded.Repeat) { ui.abLoop(p) }
                 item("Frame back", Icons.Rounded.SkipPrevious) { p.frameStep(false) }
                 item("Frame forward", Icons.Rounded.SkipNext) { p.frameStep(true) }
-                item("Rotate screen", Icons.Rounded.ScreenRotation) { activity.toggleRotation() }
+                if (!tv) item("Rotate screen", Icons.Rounded.ScreenRotation) { activity.toggleRotation() }
             }
         }
     }
 }
 
 @Composable
-private fun CenterControls(p: Player, togglePlay: () -> Unit) {
+private fun CenterControls(p: Player, togglePlay: () -> Unit, playFocus: FocusRequester) {
     val accent = LocalAccent.current
+    if (LocalTv.current) LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         IconBtn(Icons.Rounded.SkipPrevious, size = 52.dp, desc = "Previous", enabled = p.queue.size > 1 || p.position > 5) { p.previous() }
         Spacer(Modifier.width(18.dp))
         IconBtn(Icons.Rounded.Replay10, size = 56.dp, desc = "Back 10 seconds") { p.seekBy(-10.0) }
-        Spacer(Modifier.width(18.dp))
+        Spacer(Modifier.width(11.dp))
         val s by animateFloatAsState(if (p.paused) 1f else 0.94f, label = "play")
+        var playFocused by remember { mutableStateOf(false) }
         Box(
-            Modifier.size((76 * s).dp).clip(CircleShape).background(accent.brush).clickable(onClick = togglePlay),
+            Modifier.size(90.dp).then(if (playFocused) Modifier.border(3.dp, Color.White, CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(if (p.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (p.paused) "Play" else "Pause",
-                tint = accent.onAccent, modifier = Modifier.size(42.dp))
+            Box(
+                Modifier.size((76 * s).dp).clip(CircleShape).background(accent.brush).focusRequester(playFocus)
+                    .onFocusChanged { playFocused = it.isFocused }.clickable(onClick = togglePlay),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(if (p.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (p.paused) "Play" else "Pause",
+                    tint = accent.onAccent, modifier = Modifier.size(42.dp))
+            }
         }
-        Spacer(Modifier.width(18.dp))
+        Spacer(Modifier.width(11.dp))
         IconBtn(Icons.Rounded.Forward10, size = 56.dp, desc = "Forward 10 seconds") { p.seekBy(10.0) }
         Spacer(Modifier.width(18.dp))
         IconBtn(Icons.Rounded.SkipNext, size = 52.dp, desc = "Next", enabled = p.index + 1 < p.queue.size || p.loopQueue) { p.next() }
@@ -515,11 +550,14 @@ private fun BottomBar(p: Player, ui: PlayerUiState, prefs: Prefs, activity: Play
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 fmtTime(p.position) + "  /  " + if (prefs.showRemaining) "−" + fmtTime(p.duration - p.position) else fmtTime(p.duration),
-                color = C.text, fontSize = 13.sp, modifier = Modifier.clickable { prefs.showRemaining = !prefs.showRemaining }.padding(8.dp),
+                color = C.text, fontSize = 13.sp,
+                modifier = Modifier.clip(RoundedCornerShape(50)).focusRing(RoundedCornerShape(50))
+                    .clickable { prefs.showRemaining = !prefs.showRemaining }.padding(8.dp),
             )
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier.clip(RoundedCornerShape(50)).background(if (p.speed != 1.0) accent.a.copy(alpha = 0.3f) else C.card)
+                    .focusRing(RoundedCornerShape(50))
                     .clickable { ui.speedOpen = !ui.speedOpen; ui.show() }.padding(horizontal = 12.dp, vertical = 6.dp),
             ) { Text(speedLabel(p.speed), color = C.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
             Spacer(Modifier.width(4.dp))
@@ -580,8 +618,32 @@ private fun SeekBar(p: Player, prefs: Prefs, onTouch: () -> Unit) {
         if (dragging && prefs.thumbnails) preview = withContext(Dispatchers.IO) { thumbs.frameAt(dragT) }
     }
     val dur = p.duration.coerceAtLeast(0.001)
-    val shown = if (dragging) dragT else p.position
-    Box(Modifier.fillMaxWidth().height(44.dp)) {
+    var focused by remember { mutableStateOf(false) }
+    var settle by remember { mutableStateOf(-1.0) }      // where a remote seek is heading, until the player gets there
+    LaunchedEffect(settle) { if (settle >= 0) { delay(1500); settle = -1.0 } }
+    val shown = if (dragging) dragT else if (settle >= 0) settle else p.position
+    Box(
+        Modifier.fillMaxWidth().height(44.dp)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (!it.isFocused && dragging) { dragging = false; p.seekTo(dragT); settle = dragT }
+            }
+            .onKeyEvent { e ->
+                val dir = when (e.key) { Key.DirectionLeft -> -1; Key.DirectionRight -> 1; else -> 0 }
+                if (dir == 0 || p.idle) return@onKeyEvent false
+                if (e.type == KeyEventType.KeyDown) {
+                    val held = e.nativeKeyEvent.repeatCount
+                    val step = when { dur < 120 -> 5.0; held > 40 -> 60.0; held > 15 -> 30.0; else -> 10.0 }
+                    if (!dragging) { dragT = if (settle >= 0) settle else p.position; dragging = true }
+                    dragT = (dragT + dir * step).coerceIn(0.0, dur)
+                    onTouch()
+                } else if (e.type == KeyEventType.KeyUp && dragging) {
+                    dragging = false; p.seekTo(dragT); settle = dragT
+                }
+                true
+            }
+            .focusable(),
+    ) {
         if (dragging) {
             val x = (shown / dur * widthPx).toFloat()
             Column(
@@ -614,7 +676,7 @@ private fun SeekBar(p: Player, prefs: Prefs, onTouch: () -> Unit) {
                     }
                 },
         ) {
-            val cy = size.height / 2; val trackH = if (dragging) 8.dp.toPx() else 5.dp.toPx()
+            val cy = size.height / 2; val trackH = if (dragging || focused) 8.dp.toPx() else 5.dp.toPx()
             val r = CornerRadius(trackH / 2)
             drawRoundRect(Color(0x33FFFFFF), Offset(0f, cy - trackH / 2), Size(size.width, trackH), r)
             val cached = ((p.position + p.cacheTime.coerceAtLeast(0.0) - p.position).coerceAtMost(dur) / dur).toFloat()
@@ -631,7 +693,8 @@ private fun SeekBar(p: Player, prefs: Prefs, onTouch: () -> Unit) {
                 val xb = (p.abB.toDoubleOrNull() ?: p.position).let { (it / dur).toFloat() * size.width }
                 drawRect(Color(0x66F59E0B), Offset(xa, cy - trackH / 2), Size((xb - xa).coerceAtLeast(2f), trackH))
             }
-            drawCircle(Color.White, if (dragging) 10.dp.toPx() else 7.dp.toPx(), Offset(size.width * f, cy))
+            if (focused) drawCircle(accent.light.copy(alpha = 0.35f), 17.dp.toPx(), Offset(size.width * f, cy))
+            drawCircle(Color.White, if (dragging || focused) 10.dp.toPx() else 7.dp.toPx(), Offset(size.width * f, cy))
         }
     }
 }

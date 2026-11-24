@@ -50,6 +50,12 @@ class Prefs(ctx: Context) {
     var autoUpdate by P("autoUpdate", true)
     var lastUpdateCheck by P("lastUpdateCheck", 0L)
     var hwdec by P("hwdec", true)
+    /**
+     * Decoded frames go from the hardware decoder straight to the screen instead of being copied into normal
+     * memory first. TV boxes copy very slowly (a 1080p video can use a whole CPU core just copying), so this
+     * is on by default on a TV. Software video filters still need the copy; the player switches by itself.
+     */
+    var directDecode by P("directDecode", ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK))
     var pitchCorrection by P("pitchCorrection", true)
     var volumeBoost by P("volumeBoost", false)
     var normalize by P("normalize", false)
@@ -63,6 +69,23 @@ class Prefs(ctx: Context) {
     var gestures by P("gestures", true)
     var backgroundAudio by P("backgroundAudio", false)
     var autoRotate by P("autoRotate", true)
+
+    // ---- Play on TV ----
+    /** This device accepts "play this" requests from phones on the same network (on by default on a TV). */
+    var castReceive by P("castReceive", ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK))
+    /** A phone this TV has not seen before must be allowed on the TV screen first. */
+    var castAsk by P("castAsk", true)
+    /** Name other devices see; empty = the device's own name. */
+    var castName by P("castName", "")
+    /** Stable random identities: this device as a receiver, and as a sender. */
+    var castTvId by P("castTvId", "")
+    var castClientId by P("castClientId", "")
+    var castClientKey by P("castClientKey", "")
+    /** TVs this phone has played on (JSON), and the one used last. */
+    var castTvs by P("castTvs", "[]")
+    var castLastTv by P("castLastTv", "")
+    /** Phones allowed to play on this TV (JSON: id -> name, key hash). */
+    var castAllowed by P("castAllowed", "{}")
 }
 
 /** One remembered file or link: position for Continue watching plus its tracks and delays. */
@@ -119,7 +142,7 @@ class History(ctx: Context) {
     }
 
     /** Continue watching: started, not finished, newest first. */
-    fun continueWatching() = entries.value.filter { it.pos > 5 && !it.finished }.take(12)
+    fun continueWatching() = entries.value.filter { it.pos > 5 && !it.finished && !it.key.startsWith("cast:") }.take(12)
 
     private fun save() {
         val a = JSONArray(); entries.value.forEach { a.put(it.toJson()) }

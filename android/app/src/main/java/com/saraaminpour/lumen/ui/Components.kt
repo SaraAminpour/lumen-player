@@ -34,6 +34,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,7 +44,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +56,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+
+/** True on Android TV: layouts get bigger targets and nothing depends on touch. */
+val LocalTv = staticCompositionLocalOf { false }
+
+/**
+ * A clear ring on whatever the remote's D-pad or a keyboard has focused. Touch never focuses anything,
+ * so phones look the same as before. Put it before `clickable`, after any `clip` of the same shape.
+ */
+fun Modifier.focusRing(shape: Shape = CircleShape, width: Dp = 2.5.dp): Modifier = composed {
+    var focused by remember { mutableStateOf(false) }
+    this.onFocusChanged { focused = it.isFocused }
+        .then(if (focused) Modifier.border(width, Color.White, shape) else Modifier)
+}
 
 /** Pill button with optional icon; primary = accent gradient (PillButton.qml). */
 @Composable
@@ -81,6 +98,7 @@ fun PillButton(
                 else Modifier.background(if (checked) accent.a.copy(alpha = 0.22f) else C.card)
                     .border(1.dp, if (checked) accent.light.copy(alpha = 0.6f) else C.glassBorder, shape)
             )
+            .focusRing(shape)
             .clickable(src, null, enabled = enabled, onClick = onClick)
             .padding(horizontal = if (text.isEmpty()) 10.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -121,6 +139,7 @@ fun IconBtn(
     Box(
         modifier.size(size).scale(s).clip(CircleShape)
             .background(if (active) accent.a.copy(alpha = 0.25f) else Color.Transparent)
+            .focusRing(CircleShape)
             .clickable(src, null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -151,7 +170,8 @@ fun Section(title: String, icon: ImageVector, modifier: Modifier = Modifier, con
 fun LSwitch(text: String, checked: Boolean, hint: String = "", onChange: (Boolean) -> Unit) {
     val accent = LocalAccent.current
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onChange(!checked) }.padding(vertical = 4.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).focusRing(RoundedCornerShape(12.dp))
+            .clickable { onChange(!checked) }.padding(vertical = 4.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -159,7 +179,7 @@ fun LSwitch(text: String, checked: Boolean, hint: String = "", onChange: (Boolea
             if (hint.isNotEmpty()) Text(hint, color = C.textFaint, fontSize = 12.sp)
         }
         Switch(
-            checked, onChange,
+            checked, null,
             colors = SwitchDefaults.colors(
                 checkedTrackColor = accent.a, checkedThumbColor = Color.White,
                 uncheckedTrackColor = C.card, uncheckedBorderColor = C.glassBorder, uncheckedThumbColor = C.textDim,
@@ -179,7 +199,8 @@ fun LSlider(
     val accent = LocalAccent.current
     Slider(
         value = value.coerceIn(range.start, range.endInclusive), onValueChange = onChange, valueRange = range,
-        onValueChangeFinished = onDone, modifier = modifier.fillMaxWidth().height(32.dp),
+        onValueChangeFinished = onDone,
+        modifier = modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(16.dp)).focusRing(RoundedCornerShape(16.dp)),
         colors = SliderDefaults.colors(
             thumbColor = Color.White, activeTrackColor = accent.light, inactiveTrackColor = C.hover,
         ),
